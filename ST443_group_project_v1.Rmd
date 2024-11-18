@@ -1,6 +1,8 @@
 ---
 title: "ST443 Group Project"
 output: html_notebook
+editor_options: 
+  chunk_output_type: inline
 ---
 
 # ST443 Group Project
@@ -112,5 +114,14 @@ We get that 66.17% of our entries are nullvalues, meaning that our data is very 
 ### Linear Discriminant Analysis (LDA)
 
 ```{r}
+#Linear Discriminant Analysis 
+# Loading necessary libraries
+library(MASS)
+library(caret)
+library(pROC)
+```
+
+```{r}
 
 ```
+
