@@ -180,4 +180,79 @@ cat("Balanced Accuracy:", round(balanced_accuracy_lda, 3), "\n")
 cat("F1 Score:", round(f1_score_lda, 3), "\n")
 cat("AUC:", round(auc_value_lda, 3), "\n")
 ```
+# Random Forest
+
+```{r}
+install.packages("randomForest")
+```
+```{r}
+library(randomForest)
+```
+
+```{r}
+train_data1$label <- as.factor(train_data1$label)
+test_data1$label <- as.factor(test_data1$label)
+```
+
+
+```{r}
+# Train Random Forest with mtry = sqrt(number of predictors)
+set.seed(1)  # For reproducibility
+p <- ncol(train_data1) - 1  # Number of predictors (excluding the label column)
+rf_model <- randomForest(label ~ ., data = train_data1, mtry = round(sqrt(p)), ntree = 500, importance = TRUE)
+
+# Print the model summary
+print(rf_model)
+```
+
+```{r}
+# Predictions on the test data
+rf_predictions <- predict(rf_model, newdata = test_data1)
+
+# Evaluating the model with a confusion matrix
+conf_matrix_rf <- confusionMatrix(rf_predictions, as.factor(test_Random_forest_data$label))
+print(conf_matrix_rf)
+```
+
+```{r}
+# Extracting specific performance metrics
+accuracy_rf <- conf_matrix_rf$overall['Accuracy']
+balanced_accuracy_rf <- conf_matrix_rf$byClass['Balanced Accuracy']
+f1_score_rf <- conf_matrix_rf$byClass['F1']
+
+cat("Accuracy:", accuracy_rf, "\n")
+cat("Balanced Accuracy:", balanced_accuracy_rf, "\n")
+cat("F1 Score:", f1_score_rf, "\n")
+```
+
+```{r}
+# Getting predicted probabilities for "TREG" class
+rf_probs <- predict(rf_model, newdata = test_data1, type = "prob")[, "TREG"]
+```
+
+```{r}
+# Convert labels to numeric for ROC calculation
+test_data1 <- ifelse(test_data1$label == "TREG", 1, 0)
+```
+
+```{r}
+# Create ROC curve
+library(pROC)
+roc_curve_rf <- roc(test_data_numeric, rf_probs)
+plot(roc_curve_rf, col = "blue", main = "ROC Curve for Random Forest")
+```
+
+```{r}
+#calculating AUC
+auc_value_rf <- auc(roc_curve_rf)
+cat("AUC:", auc_value_rf, "\n")
+```
+
+```{r}
+cat("Random Forest Evaluation Summary:\n")
+cat("Accuracy:", round(accuracy_rf, 3), "\n")
+cat("Balanced Accuracy:", round(balanced_accuracy_rf, 3), "\n")
+cat("F1 Score:", round(f1_score_rf, 3), "\n")
+cat("AUC:", round(auc_value_rf, 3), "\n")
+```
 
