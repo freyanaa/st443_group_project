@@ -1,0 +1,116 @@
+---
+title: "ST443 Group Project"
+output: html_notebook
+---
+
+# ST443 Group Project
+
+# Task 1: Binary classification
+
+Load and View data:
+
+```{r}
+setwd("C:/Users/nagel freya/OneDrive - The Boston Consulting Group, Inc/Documents/01 Master/01 Uni/01 Term/ST443 Machine Learning and Data Mining/00 Group Project")
+RNAdata <-read.csv("data1.csv.gz", header=TRUE)
+View(RNAdata)
+```
+
+Check for missing data:
+
+```{r}
+any(is.na(RNAdata))
+```
+
+No data is missing.
+
+## T1.1 Data preparation and Summary Statistics
+
+### Balance / share of different celltypes in dataset
+
+We first create a new column that assigns each celltype (CD4+T and TREG) a numerical value, such that we can calculate statistics that are interesting to us with respect to each different celltype.
+
+```{r}
+RNAdata$celltype <- as.numeric(factor(RNAdata$label))
+table(RNAdata$label, RNAdata$celltype)
+table(RNAdata$celltype) / nrow(RNAdata)
+```
+
+We find that the dataset contains 3356 (\~61.34%) CD4+T cells (numerical value = 1) and 2115 (38.65%) TREG cells (numerical value = 2).
+
+### Significance of genes for different celltypes
+
+Now we generate a new dataset that contains the mean and variance of each gene's expression across cells and for each celltype individually. This will help us later understand the significance of certain gene expression levels for the different celltypes.
+
+```{r}
+gene_stats <- data.frame(
+  Mean = colMeans(RNAdata[,-1], na.rm = TRUE),
+  Variance = apply(RNAdata[,-1], 2, var, na.rm = TRUE),
+# Subset for CD4+T cells
+  Mean_CD4 = colMeans(RNAdata[RNAdata$label == "CD4+T", -1], na.rm = TRUE),
+  Variance_CD4 = apply(RNAdata[RNAdata$label == "CD4+T", -1], 2, var, na.rm = TRUE),
+  # Subset for TREG cells
+  Mean_TREG = colMeans(RNAdata[RNAdata$label == "TREG", -1], na.rm = TRUE),
+  Variance_TREG = apply(RNAdata[RNAdata$label == "TREG", -1], 2, var, na.rm = TRUE)
+)
+View(gene_stats)
+```
+
+### Understand Gene Expression patterns
+
+To understand the Gene Expression patterns we create histograms for a few genes. To understand whether the gene expression patterns are inherently different for the two celltypes, we use the subsets of data for each celltype and compare the histograms.
+
+```{r}
+# Create subsets
+CD4_data <- subset(RNAdata, celltype == 1)
+TREG_data <- subset(RNAdata, celltype == 2)
+
+# Pick 4 genes at random
+gene_columns <- colnames(data)[-1]
+random_genes <- sample(gene_columns, 4)
+
+par(mfrow = c(4, 3), mar = c(4, 4, 2, 1)) 
+
+for (gene in random_genes) {
+  
+  # Histogram for gene over all celltypes
+  hist(RNAdata[[gene]],
+       main = paste("All Cells -", gene),
+       xlab = "Expression",
+       col = "blue",
+       breaks = 20)
+  
+  # Histogram for gene over CD4+T cells
+  hist(CD4_data[[gene]],
+       main = paste("CD4+T -", gene),
+       xlab = "Expression",
+       col = "green",
+       breaks = 20)
+
+  # Histogram for gene over TREG cells
+  hist(TREG_data[[gene]],
+       main = paste("TREG - ", gene),
+       xlab = "Expression",
+       col = "yellow",
+       breaks = 20)
+}
+```
+
+We can see that there is no significant difference in the distribution of the expressed genes between CD4+T and TREG cells. We can further see that across all celltypes and genes, there is a high number of cells without expression of that specific gene (expression = 0). For the rest of the cells, the expression follows a normal distribution around some mean between 2 and 5.
+
+### Sparsity of Data
+
+RNA data is often sparse, i.e. has a significant number of null-values - our histogram plots above already indicate this. We calculate the sparsity of our dataframe by dividing the number of zero entries by the total number of entries.
+
+```{r}
+sum(RNAdata == 0)/(dim(RNAdata)[1]*dim(RNAdata)[2])
+```
+
+We get that 66.17% of our entries are nullvalues, meaning that our data is very sparse and thus less variant, as most entries are repeated.
+
+## T1.2 Training and evaluation of classifiers
+
+### Linear Discriminant Analysis (LDA)
+
+```{r}
+
+```
