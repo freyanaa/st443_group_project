@@ -180,7 +180,7 @@ cat("Balanced Accuracy:", round(balanced_accuracy_lda, 3), "\n")
 cat("F1 Score:", round(f1_score_lda, 3), "\n")
 cat("AUC:", round(auc_value_lda, 3), "\n")
 ```
-# Random Forest
+### Random Forest
 
 ```{r}
 install.packages("randomForest")
@@ -254,5 +254,98 @@ cat("Accuracy:", round(accuracy_rf, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_rf, 3), "\n")
 cat("F1 Score:", round(f1_score_rf, 3), "\n")
 cat("AUC:", round(auc_value_rf, 3), "\n")
+```
+
+### K-NN 
+
+```{r}
+library(class)
+```
+
+```{r}
+# Create matrices for predictors (X)
+train_X <- as.matrix(train_data1[, -1])  # Exclude the label column
+test_X <- as.matrix(test_data1[, -1])
+
+# Create vectors for labels (Y)
+train_Y <- train_data1$label
+test_Y <- test_data1$label
+```
+
+```{r}
+# Setting k = 5
+k <- 5
+
+# Perform k-NN classification
+knn_predictions <- knn(train_X, test_X, train_Y, k = k)
+
+```
+
+
+```{r}
+# Confusion matrix
+conf_matrix_knn <- confusionMatrix(knn_predictions, as.factor(test_Y))
+print(conf_matrix_knn)
+
+# Extract the confusion matrix as a table
+confusion_table <- conf_matrix_knn$table
+print(confusion_table)
+
+#Calculating Accuracy
+accuracy_knn <- sum(diag(confusion_table)) / sum(confusion_table)
+cat("Accuracy:", accuracy_knn, "\n")
+
+```
+
+```{r}
+precision <- conf_matrix_knn$byClass["Precision"]
+recall <- conf_matrix_knn$byClass["Recall"]
+f1_score_knn <- 2 * ((precision * recall) / (precision + recall))
+cat("F1 Score:", f1_score_knn, "\n")
+```
+
+```{r}
+sensitivity <- conf_matrix_knn$byClass["Sensitivity"]
+specificity <- conf_matrix_knn$byClass["Specificity"]
+balanced_accuracy_knn <- (sensitivity + specificity) / 2
+cat("Balanced Accuracy:", balanced_accuracy_knn, "\n")
+```
+
+```{r}
+# Calculate pseudo-probabilities for AUC
+k <- 5  #The same k as used above
+knn_probabilities <- attr(knn_predictions, "prob")
+knn_probabilities <- ifelse(knn_predictions == "TREG", knn_probabilities, 1 - knn_probabilities)
+summary(knn_probabilities)  # Ensure values range between 0 and 1
+```
+
+```{r}
+# Check levels of the test_Y factor
+levels(test_Y)
+table(test_Y)
+```
+```{r}
+test_Y_numeric <- ifelse(test_Y == "TREG", 1, 0)  # Assuming "TREG" is the positive class
+table(test_Y_numeric)
+```
+
+```{r}
+# Calculate AUC
+roc_curve_knn <- roc(test_Y_numeric, knn_probabilities)
+auc_value_knn <- auc(roc_curve_knn)
+cat("AUC:", auc_value_knn, "\n")
+```
+
+```{r}
+# Plot ROC curve
+plot(roc_curve_knn, col = "blue", main = "ROC Curve for k-NN")
+```
+
+```{r}
+cat("Knn Classifiers Summary:\n")
+cat("Accuracy:", round(accuracy_knn, 3), "\n")
+cat("Balanced Accuracy:", round(balanced_accuracy_knn, 3), "\n")
+cat("F1 Score:", round(f1_score_knn, 3), "\n")
+cat("AUC:", round(auc_value_knn, 3), "\n")
 ```
 
