@@ -12,7 +12,7 @@ editor_options:
 Load and View data:
 
 ```{r}
-setwd("C:/Users/nagel freya/OneDrive - The Boston Consulting Group, Inc/Documents/01 Master/01 Uni/01 Term/ST443 Machine Learning and Data Mining/00 Group Project")
+#setwd("C:/Users/nagel freya/OneDrive - The Boston Consulting Group, Inc/Documents/01 Master/01 Uni/01 Term/ST443 Machine Learning and Data Mining/00 Group Project")
 RNAdata <-read.csv("data1.csv.gz", header=TRUE)
 View(RNAdata)
 ```
