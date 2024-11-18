@@ -122,6 +122,62 @@ library(pROC)
 ```
 
 ```{r}
+set.seed(123)  # For reproducibility
 
+# Create training (80%) and testing (20%) sets
+sample_index <- createDataPartition(RNAdata$label, p = 0.8, list = FALSE)
+train_data1 <- RNAdata[sample_index, ]
+test_data1 <- RNAdata[-sample_index, ]
+```
+
+```{r}
+# Train the LDA model
+lda_model <- lda(label ~ ., data = train_data1)
+print(lda_model)
+```
+
+```{r}
+# Make predictions on the test data
+lda_predictions <- predict(lda_model, test_data1)
+predicted_labels <- lda_predictions$class
+```
+
+```{r}
+# Confusion matrix
+conf_matrix <- confusionMatrix(predicted_labels, as.factor(test_data1$label))
+conf_matrix
+```
+
+```{r}
+# Extracting specific metrics
+accuracy_lda <- conf_matrix$overall['Accuracy']
+balanced_accuracy_lda <- conf_matrix$byClass['Balanced Accuracy']
+f1_score_lda <- conf_matrix$byClass['F1']
+```
+
+```{r}
+cat("Accuracy:", accuracy_lda, "\n")
+cat("Balanced Accuracy:", balanced_accuracy_lda, "\n")
+cat("F1 Score:", f1_score_lda, "\n")
+```
+
+```{r}
+# Convert labels to numeric for ROC curve calculation
+test_data1_numeric <- ifelse(test_data1$label == "TREG", 1, 0)
+lda_probs <- lda_predictions$posterior[, "TREG"]
+
+# Create ROC curve
+roc_curve_lda <- roc(test_data1_numeric, lda_probs)
+plot(roc_curve_lda, col = "pink", main = "ROC Curve for LDA")
+auc_value_lda <- auc(roc_curve_lda)
+cat("AUC:", auc_value_lda, "\n")
+```
+
+```{r}
+cat("LDA Model Evaluation Summary:\n")
+cat("Accuracy:", round(accuracy_lda, 3), "\n")
+cat("Balanced Accuracy:", round(balanced_accuracy_lda, 3), "\n")
+cat("F1 Score:", round(f1_score_lda, 3), "\n")
+cat("AUC:", round(auc_value_lda, 3), "\n")
 ```
 
