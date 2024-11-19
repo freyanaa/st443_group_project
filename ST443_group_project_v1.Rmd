@@ -11,7 +11,6 @@ editor_options:
 
 # Introduction
 
-
 Load and View data:
 
 ```{r}
@@ -167,10 +166,10 @@ cat("F1 Score:", f1_score_lda, "\n")
 ```{r}
 # Convert labels to numeric for ROC curve calculation
 #test_data1_numeric <- ifelse(test_data1$label == "TREG", 1, 0)
-lda_probs <- lda_predictions$posterior[, "TREG"]
+lda_probs <- lda_predictions$posterior[, 2]
 
 # Create ROC curve
-roc_curve_lda <- roc(as.factor(test_data1$label), predict(lda_model, test_data1)$posterior[,2])
+roc_curve_lda <- roc(as.factor(test_data1$label), lda_probs)
 plot(roc_curve_lda, col = "pink", main = "ROC Curve for LDA")
 auc_value_lda <- auc(roc_curve_lda)
 cat("AUC:", auc_value_lda, "\n")
