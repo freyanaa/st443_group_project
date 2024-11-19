@@ -165,7 +165,6 @@ cat("F1 Score:", f1_score_lda, "\n")
 
 ```{r}
 # Convert labels to numeric for ROC curve calculation
-#test_data1_numeric <- ifelse(test_data1$label == "TREG", 1, 0)
 lda_probs <- lda_predictions$posterior[, 2]
 
 # Create ROC curve
@@ -186,16 +185,7 @@ cat("AUC:", round(auc_value_lda, 3), "\n")
 ### Random Forest
 
 ```{r}
-install.packages("randomForest")
-```
-
-```{r}
 library(randomForest)
-```
-
-```{r}
-train_data1$label <- as.factor(train_data1$label)
-test_data1$label <- as.factor(test_data1$label)
 ```
 
 ```{r}
