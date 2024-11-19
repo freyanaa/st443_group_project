@@ -1,0 +1,12 @@
+---
+title: "ST443 Group Project - Task 2"
+output: html_notebook
+editor_options: 
+  chunk_output_type: inline
+---
+
+# ST443 Group Project
+
+# Task 2: Feature selection
+
+## Introduction
