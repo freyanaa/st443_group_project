@@ -9,6 +9,9 @@ editor_options:
 
 # Task 1: Binary classification
 
+# Introduction
+
+
 Load and View data:
 
 ```{r}
