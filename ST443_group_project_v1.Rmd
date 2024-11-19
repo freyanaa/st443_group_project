@@ -1,5 +1,5 @@
 ---
-title: "ST443 Group Project"
+title: "ST443 Group Project - Task 1"
 output: html_notebook
 editor_options: 
   chunk_output_type: inline
@@ -9,7 +9,7 @@ editor_options:
 
 # Task 1: Binary classification
 
-# Introduction
+## Introduction
 
 The aim of Task 1 is to classify immune cell types based on RNA expression levels.
 
@@ -287,23 +287,16 @@ cat("AUC:", round(auc_value_lda, 3), "\n")
 ### Logistic Classifier
 
 ```{r}
-# Create copies of the datasets for logistic regression
-train_data_log <- train_data1
-test_data_log <- test_data1
-```
-
-```{r}
 # Train a logistic regression model
-logistic_model <- glm(label ~ ., data = train_data_log, family = binomial)
+logistic_model <- glm(label ~ ., data = train_data1, family = binomial)
 
 # Print the model summary
 summary(logistic_model)
-
 ```
 
 ```{r}
 # Predict probabilities on the test set
-logistic_predictions <- predict(logistic_model, newdata = test_data_log, type = "response")
+logistic_predictions <- predict(logistic_model, newdata = test_data1, type = "response")
 
 # Convert probabilities to class labels (threshold = 0.5)
 logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 2, 1)
@@ -312,17 +305,16 @@ logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 2, 1)
 
 ```{r}
 # Calculate test error
-logistic_test_error <- mean(logistic_predicted_labels != test_data_log$label)
+logistic_test_error <- mean(logistic_predicted_labels != test_data1$label)
 
 # Print the test error
 cat("Test Error (Logistic):", round(logistic_test_error, 3), "\n")
-
 ```
 
 ```{r}
 # Confusion matrix
 
-conf_matrix <- confusionMatrix(as.factor(logistic_predicted_labels), as.factor(test_data_log$label))
+conf_matrix <- confusionMatrix(as.factor(logistic_predicted_labels), as.factor(test_data1$label))
 print(conf_matrix)
 ```
 
@@ -336,13 +328,12 @@ f1_score_logistic <- conf_matrix$byClass['F1']
 cat("Accuracy (Logistic):", accuracy_logistic, "\n")
 cat("Balanced Accuracy (Logistic):", balanced_accuracy_logistic, "\n")
 cat("F1 Score (Logistic):", f1_score_logistic, "\n")
-
 ```
 
 ```{r}
 # Calculate and plot the ROC curve
 
-roc_curve_logistic <- roc(test_data_log$label, logistic_predictions)  # Use probabilities for ROC
+roc_curve_logistic <- roc(test_data1$label, logistic_predictions)  # Use probabilities for ROC
 plot(roc_curve_logistic, main = "ROC Curve for Logistic Regression", col='red')
 auc_logistic <- auc(roc_curve_logistic)
 cat("AUC:", auc_logistic, "\n")
@@ -356,7 +347,6 @@ cat("Accuracy:", round(accuracy_logistic, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_logistic, 3), "\n")
 cat("F1 Score:", round(f1_score_logistic, 3), "\n")
 cat("AUC:", round(auc_logistic, 3), "\n")
-
 ```
 
 ### Random Forest
@@ -369,6 +359,7 @@ library(randomForest)
 # Train Random Forest with mtry = sqrt(number of predictors)
 set.seed(1)  # For reproducibility
 p <- ncol(train_data1) - 1  # Number of predictors (excluding the label column)
+train_data1$label <- as.factor(train_data1$label)
 rf_model <- randomForest(label ~ ., data = train_data1, mtry = round(sqrt(p)), ntree = 500, importance = TRUE)
 
 # Print the model summary
@@ -377,10 +368,10 @@ print(rf_model)
 
 ```{r}
 # Predictions on the test data
-rf_predictions <- predict(rf_model, newdata = test_data1)
+rf_predictions <- predict(rf_model, test_data1)
 
 # Evaluating the model with a confusion matrix
-conf_matrix_rf <- confusionMatrix(rf_predictions, as.factor(test_Random_forest_data$label))
+conf_matrix_rf <- confusionMatrix(rf_predictions, as.factor(test_data1$label))
 print(conf_matrix_rf)
 ```
 
@@ -397,18 +388,13 @@ cat("F1 Score:", f1_score_rf, "\n")
 
 ```{r}
 # Getting predicted probabilities for "TREG" class
-rf_probs <- predict(rf_model, newdata = test_data1, type = "prob")[, "TREG"]
-```
-
-```{r}
-# Convert labels to numeric for ROC calculation
-test_data1 <- ifelse(test_data1$label == "TREG", 1, 0)
+rf_probs <- predict(rf_model, test_data1, type = "prob")[, 2]
 ```
 
 ```{r}
 # Create ROC curve
 library(pROC)
-roc_curve_rf <- roc(test_data_numeric, rf_probs)
+roc_curve_rf <- roc(test_data1$label, rf_probs)
 plot(roc_curve_rf, col = "blue", main = "ROC Curve for Random Forest")
 ```
 
@@ -448,7 +434,6 @@ k <- 5
 
 # Perform k-NN classification
 knn_predictions <- knn(train_X, test_X, train_Y, k = k)
-
 ```
 
 ```{r}
