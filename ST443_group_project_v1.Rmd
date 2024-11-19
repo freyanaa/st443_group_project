@@ -12,7 +12,6 @@ editor_options:
 # Introduction
 The aim of Task 1 is to classify immune cell types based on RNA expression levels.
 
-
 Load and View data:
 
 ```{r}
@@ -47,9 +46,9 @@ No infinite values.
 We first create a new column that assigns each celltype (CD4+T and TREG) a numerical value, such that we can calculate statistics that are interesting to us with respect to each different celltype.
 
 ```{r}
-RNAdata$celltype <- as.numeric(factor(RNAdata$label))
-table(RNAdata$label, RNAdata$celltype)
-table(RNAdata$celltype) / nrow(RNAdata)
+RNAdata$label <- as.numeric(factor(RNAdata$label))
+table(RNAdata$label)
+table(RNAdata$label) / nrow(RNAdata)
 ```
 
 We find that the dataset contains 3356 (\~61.34%) CD4+T cells (numerical value = 1) and 2115 (38.65%) TREG cells (numerical value = 2).
@@ -88,11 +87,11 @@ gene_stats <- data.frame(
   Mean = colMeans(RNAdata[,-1], na.rm = TRUE),
   Variance = apply(RNAdata[,-1], 2, var, na.rm = TRUE),
 # Subset for CD4+T cells
-  Mean_CD4 = colMeans(RNAdata[RNAdata$label == "CD4+T", -1], na.rm = TRUE),
-  Variance_CD4 = apply(RNAdata[RNAdata$label == "CD4+T", -1], 2, var, na.rm = TRUE),
+  Mean_CD4 = colMeans(RNAdata[RNAdata$label == 1, -1], na.rm = TRUE),
+  Variance_CD4 = apply(RNAdata[RNAdata$label == 2, -1], 2, var, na.rm = TRUE),
   # Subset for TREG cells
-  Mean_TREG = colMeans(RNAdata[RNAdata$label == "TREG", -1], na.rm = TRUE),
-  Variance_TREG = apply(RNAdata[RNAdata$label == "TREG", -1], 2, var, na.rm = TRUE)
+  Mean_TREG = colMeans(RNAdata[RNAdata$label == 1, -1], na.rm = TRUE),
+  Variance_TREG = apply(RNAdata[RNAdata$label == 2, -1], 2, var, na.rm = TRUE)
 )
 View(gene_stats)
 ```
@@ -126,11 +125,11 @@ To understand the Gene Expression patterns we create histograms for a few genes.
 
 ```{r}
 # Create subsets
-CD4_data <- subset(RNAdata, celltype == 1)
-TREG_data <- subset(RNAdata, celltype == 2)
+CD4_data <- subset(RNAdata, label == 1)
+TREG_data <- subset(RNAdata, label == 2)
 
 # Pick 4 genes at random
-gene_columns <- colnames(data)[-1]
+gene_columns <- colnames(RNAdata)[-1]
 random_genes <- sample(gene_columns, 4)
 
 par(mfrow = c(4, 3), mar = c(4, 4, 2, 1)) 
@@ -276,11 +275,10 @@ cat("F1 Score:", f1_score_lda, "\n")
 
 ```{r}
 # Convert labels to numeric for ROC curve calculation
-test_data1_numeric <- ifelse(test_data1$label == "TREG", 1, 0)
-lda_probs <- lda_predictions$posterior[, "TREG"]
+lda_probs <- lda_predictions$posterior[, 2]
 
 # Create ROC curve
-roc_curve_lda <- roc(test_data1_numeric, lda_probs)
+roc_curve_lda <- roc(as.factor(test_data1$label), lda_probs)
 plot(roc_curve_lda, col = "pink", main = "ROC Curve for LDA")
 auc_value_lda <- auc(roc_curve_lda)
 cat("AUC:", auc_value_lda, "\n")
@@ -293,9 +291,6 @@ cat("Balanced Accuracy:", round(balanced_accuracy_lda, 3), "\n")
 cat("F1 Score:", round(f1_score_lda, 3), "\n")
 cat("AUC:", round(auc_value_lda, 3), "\n")
 ```
-
-
-
 
 ### Logistic Classifier
 
@@ -387,23 +382,11 @@ cat("AUC:", round(auc_logistic, 3), "\n")
 
 ```
 
-
-
-
 ### Random Forest
 
 ```{r}
-install.packages("randomForest")
-```
-```{r}
 library(randomForest)
 ```
-
-```{r}
-train_data1$label <- as.factor(train_data1$label)
-test_data1$label <- as.factor(test_data1$label)
-```
-
 
 ```{r}
 # Train Random Forest with mtry = sqrt(number of predictors)
@@ -466,7 +449,7 @@ cat("F1 Score:", round(f1_score_rf, 3), "\n")
 cat("AUC:", round(auc_value_rf, 3), "\n")
 ```
 
-### K-NN 
+### K-NN
 
 ```{r}
 library(class)
@@ -490,7 +473,6 @@ k <- 5
 knn_predictions <- knn(train_X, test_X, train_Y, k = k)
 
 ```
-
 
 ```{r}
 # Confusion matrix
@@ -534,6 +516,7 @@ summary(knn_probabilities)  # Ensure values range between 0 and 1
 levels(test_Y)
 table(test_Y)
 ```
+
 ```{r}
 test_Y_numeric <- ifelse(test_Y == "TREG", 1, 0)  # Assuming "TREG" is the positive class
 table(test_Y_numeric)
@@ -558,4 +541,3 @@ cat("Balanced Accuracy:", round(balanced_accuracy_knn, 3), "\n")
 cat("F1 Score:", round(f1_score_knn, 3), "\n")
 cat("AUC:", round(auc_value_knn, 3), "\n")
 ```
-
