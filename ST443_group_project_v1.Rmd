@@ -10,6 +10,7 @@ editor_options:
 # Task 1: Binary classification
 
 # Introduction
+
 The aim of Task 1 is to classify immune cell types based on RNA expression levels.
 
 Load and View data:
@@ -28,7 +29,6 @@ any(is.na(RNAdata))
 
 No data is missing.
 
-
 Check for infinite values
 
 ```{r}
@@ -36,8 +36,6 @@ sum(sapply(RNAdata, function(x) sum(is.infinite(x))))
 ```
 
 No infinite values.
-
-
 
 ## T1.1 Data preparation and Summary Statistics
 
@@ -53,11 +51,10 @@ table(RNAdata$label) / nrow(RNAdata)
 
 We find that the dataset contains 3356 (\~61.34%) CD4+T cells (numerical value = 1) and 2115 (38.65%) TREG cells (numerical value = 2).
 
+To visualize this distribution, we generated a bar plot.
 
-To visualize this distribution, we generated a bar plot. 
 ```{r}
 # Load ggplot2 library for plotting
-install.packages("ggplot2")
 library(ggplot2)
 
 # Create a table of class counts
@@ -76,7 +73,6 @@ ggplot(class_counts_df, aes(x = Label, y = Count, fill = Label)) +
 ```
 
 As seen in the plot, there is a class imbalance, with CD4+T cells being more prevalent than TREG cells. This imbalance could potentially impact the performance of machine learning models, as classifiers might be biased toward the majority class.
-
 
 ### Significance of genes for different celltypes
 
@@ -115,9 +111,6 @@ min_max_values <- data.frame(
 
 View(min_max_values)
 ```
-
-
-
 
 ### Understand Gene Expression patterns
 
@@ -161,8 +154,8 @@ for (gene in random_genes) {
 
 We can see that there is no significant difference in the distribution of the expressed genes between CD4+T and TREG cells. We can further see that across all celltypes and genes, there is a high number of cells without expression of that specific gene (expression = 0). For the rest of the cells, the expression follows a normal distribution around some mean between 2 and 5.
 
+# Density plots for genes
 
-# Density plots for genes 
 The code below generates density plots for the expression levels of randomly selected genes. This helps visualize the distribution of RNA expression for each gene across the two cell types (CD4+T and TREG).
 
 ```{r}
@@ -183,10 +176,10 @@ for (gene in selected_genes) {
 
 The density plots for most genes reveal highly overlapping distributions for CD4+T and TREG cells, suggesting that many genes do not exhibit significant differential expression between the two cell types. This overlap implies that these genes may not be strong discriminators for classification and might be less relevant for building effective predictive models. Such observations underscore the importance of identifying key genes or features that show greater separation between the classes, as they are likely to contribute more meaningfully to the task of binary classification.
 
-
 # Scatter plots
 
 The scatter plots also helps us visualize the expression levels of randomly selected pairs of genes, comparing their distributions between the two cell types (CD4+T and TREG)
+
 ```{r}
 # Randomly select 2 pairs of genes for scatter plots
 set.seed(Sys.time())
@@ -209,7 +202,6 @@ ggplot(RNAdata, aes(x = .data[[selected_genes[3]]], y = .data[[selected_genes[4]
 ```
 
 The significant overlap in distributions between CD4+T and TREG cells indicates that these gene pairs may not be highly informative for distinguishing the two classes. This highlights the importance of identifying gene pairs or combinations with stronger class separation for effective feature selection and classification.
-
 
 ### Sparsity of Data
 
@@ -298,16 +290,6 @@ cat("AUC:", round(auc_value_lda, 3), "\n")
 # Create copies of the datasets for logistic regression
 train_data_log <- train_data1
 test_data_log <- test_data1
-
-# Convert 'label' to a binary numeric variable in the new datasets
-train_data_log$label <- ifelse(train_data_log$label == "TREG", 1, 0)
-test_data_log$label <- ifelse(test_data_log$label == "TREG", 1, 0)
-
-# Verify the changes
-table(train_data_log$label)
-table(test_data_log$label)
-
-
 ```
 
 ```{r}
@@ -319,13 +301,12 @@ summary(logistic_model)
 
 ```
 
-
 ```{r}
 # Predict probabilities on the test set
 logistic_predictions <- predict(logistic_model, newdata = test_data_log, type = "response")
 
 # Convert probabilities to class labels (threshold = 0.5)
-logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 1, 0)
+logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 2, 1)
 
 ```
 
@@ -338,14 +319,12 @@ cat("Test Error (Logistic):", round(logistic_test_error, 3), "\n")
 
 ```
 
-
 ```{r}
 # Confusion matrix
 
 conf_matrix <- confusionMatrix(as.factor(logistic_predicted_labels), as.factor(test_data_log$label))
 print(conf_matrix)
 ```
-
 
 ```{r}
 # Extract metrics from the confusion matrix
@@ -360,7 +339,6 @@ cat("F1 Score (Logistic):", f1_score_logistic, "\n")
 
 ```
 
-
 ```{r}
 # Calculate and plot the ROC curve
 
@@ -369,7 +347,6 @@ plot(roc_curve_logistic, main = "ROC Curve for Logistic Regression", col='red')
 auc_logistic <- auc(roc_curve_logistic)
 cat("AUC:", auc_logistic, "\n")
 ```
-
 
 Logistic Regression Model Evaluation Summary:
 
