@@ -349,6 +349,23 @@ cat("F1 Score:", round(f1_score_logistic, 3), "\n")
 cat("AUC:", round(auc_logistic, 3), "\n")
 ```
 
+### Quadratic Discriminant Analysis (QDA)
+
+```{r}
+# Create training (80%) and testing (20%) sets
+library(smotefamily)
+library(klaR)
+library(caret)
+
+# Step 3: Fit the QDA model
+# Ensure `label` is the dependent variable in the formula
+qda_model <- qda(label ~ ., data = RNAdata)
+
+# Step 4: Evaluate the model
+# Predict on the test set
+qda_predictions <- predict(qda_model, test_data2[,-1])  # Exclude label column
+```
+
 ### Random Forest
 
 ```{r}
