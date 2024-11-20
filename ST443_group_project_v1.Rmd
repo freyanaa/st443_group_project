@@ -543,3 +543,44 @@ cat("Balanced Accuracy:", round(balanced_accuracy_knn, 3), "\n")
 cat("F1 Score:", round(f1_score_knn, 3), "\n")
 cat("AUC:", round(auc_value_knn, 3), "\n")
 ```
+
+
+### Support Vector Machine (SVM)
+
+```{r}
+#Packages
+library(e1071)
+```
+
+```{r}
+RNAdata$label <- factor(RNAdata$label)
+
+#Model
+svm_model <- svm(train_data1$label ~ ., data = train_data1, kernel = "linear")
+svm_predictions <- predict(svm_model, test_data1[,-1])
+```
+
+```{r}
+# Accuracy
+svm_accuracy <- mean(svm_predictions == test_data1$label)
+print(paste("SVM Accuracy: ", svm_accuracy))
+
+# Confusion matrix
+svm_conf_matrix <- table(Predicted = svm_predictions, Actual = test_data1$label)
+print(svm_conf_matrix)
+
+svm_recall_per_class <- diag(svm_conf_matrix) / rowSums(svm_conf_matrix)
+
+# Balanced accuracy
+svm_balanced_accuracy <- mean(svm_recall_per_class)
+print(paste("SVM Balanced Accuracy: ", svm_balanced_accuracy))
+
+svm_precision_per_class <- diag(svm_conf_matrix) / colSums(svm_conf_matrix)
+svm_f1_score_per_class <- 2 * (svm_precision_per_class * svm_recall_per_class) / (svm_precision_per_class + svm_recall_per_class)
+
+# F1 Scores for each class
+cat("SVM F1 Score per class: ", svm_f1_score_per_class, "\n")
+svm_average_f1_score <- mean(svm_f1_score_per_class)
+print(paste("SVM Average F1-Score: ", svm_average_f1_score))
+
+```
