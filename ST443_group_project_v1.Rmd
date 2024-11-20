@@ -218,7 +218,13 @@ We get that 66.17% of our entries are nullvalues, meaning that our data is very 
 ### Split data into Train and Test data
 
 ```{r}
-set.seed(123)  # For reproducibility
+# Loading necessary libraries
+library(MASS)
+library(caret)
+library(pROC)
+
+# Set seed for reproducibility
+set.seed(123)  
 
 # Create training (80%) and testing (20%) sets
 sample_index <- createDataPartition(RNAdata$label, p = 0.8, list = FALSE)
@@ -229,14 +235,6 @@ test_data1 <- RNAdata[-sample_index, ]
 ### Linear Discriminant Analysis (LDA)
 
 ```{r}
-#Linear Discriminant Analysis 
-# Loading necessary libraries
-library(MASS)
-library(caret)
-library(pROC)
-```
-
-```{r}
 # Train the LDA model
 lda_model <- lda(label ~ ., data = train_data1)
 print(lda_model)
@@ -244,27 +242,27 @@ print(lda_model)
 
 ```{r}
 # Make predictions on the test data
-lda_predictions <- predict(lda_model, test_data1)
-predicted_labels <- lda_predictions$class
+lda_predictions <- predict(lda_model, test_data1[,-1])
+lda_predicted_labels <- lda_predictions$class
 ```
 
 ```{r}
 # Confusion matrix
-conf_matrix <- confusionMatrix(predicted_labels, as.factor(test_data1$label))
-conf_matrix
+lda_conf_matrix <- confusionMatrix(lda_predicted_labels, as.factor(test_data1$label))
+lda_conf_matrix
 ```
 
 ```{r}
 # Extracting specific metrics
-accuracy_lda <- conf_matrix$overall['Accuracy']
-balanced_accuracy_lda <- conf_matrix$byClass['Balanced Accuracy']
-f1_score_lda <- conf_matrix$byClass['F1']
+lda_accuracy <- conf_matrix$overall['Accuracy']
+lda_balanced_accuracy <- conf_matrix$byClass['Balanced Accuracy']
+lda_f1_score <- conf_matrix$byClass['F1']
 ```
 
 ```{r}
-cat("Accuracy:", accuracy_lda, "\n")
-cat("Balanced Accuracy:", balanced_accuracy_lda, "\n")
-cat("F1 Score:", f1_score_lda, "\n")
+cat("Accuracy:", lda_accuracy, "\n")
+cat("Balanced Accuracy:", lda_balanced_accuracy, "\n")
+cat("F1 Score:", lda_f1_score, "\n")
 ```
 
 ```{r}
@@ -272,18 +270,18 @@ cat("F1 Score:", f1_score_lda, "\n")
 lda_probs <- lda_predictions$posterior[, 2]
 
 # Create ROC curve
-roc_curve_lda <- roc(as.factor(test_data1$label), lda_probs)
-plot(roc_curve_lda, col = "pink", main = "ROC Curve for LDA")
-auc_value_lda <- auc(roc_curve_lda)
-cat("AUC:", auc_value_lda, "\n")
+lda_roc_curve <- roc(as.factor(test_data1$label), lda_probs)
+plot(lda_roc_curve, col = "pink", main = "ROC Curve for LDA")
+lda_auc_value <- auc(lda_roc_curve)
+cat("AUC:", lda_auc_value, "\n")
 ```
 
 ```{r}
 cat("LDA Model Evaluation Summary:\n")
-cat("Accuracy:", round(accuracy_lda, 3), "\n")
-cat("Balanced Accuracy:", round(balanced_accuracy_lda, 3), "\n")
-cat("F1 Score:", round(f1_score_lda, 3), "\n")
-cat("AUC:", round(auc_value_lda, 3), "\n")
+cat("Accuracy:", round(lda_accuracy, 3), "\n")
+cat("Balanced Accuracy:", round(lda_balanced_accuracy, 3), "\n")
+cat("F1 Score:", round(lda_f1_score, 3), "\n")
+cat("AUC:", round(lda_auc_value, 3), "\n")
 ```
 
 ### Logistic Classifier
@@ -298,7 +296,7 @@ summary(logistic_model)
 
 ```{r}
 # Predict probabilities on the test set
-logistic_predictions <- predict(logistic_model, newdata = test_data1, type = "response")
+logistic_predictions <- predict(logistic_model, test_data1[, -1], type = "response")
 
 # Convert probabilities to class labels (threshold = 0.5)
 logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 2, 1)
@@ -314,16 +312,15 @@ cat("Test Error (Logistic):", round(logistic_test_error, 3), "\n")
 
 ```{r}
 # Confusion matrix
-
-conf_matrix <- confusionMatrix(as.factor(logistic_predicted_labels), as.factor(test_data1$label))
-print(conf_matrix)
+logistic_conf_matrix <- confusionMatrix(as.factor(logistic_predicted_labels), as.factor(test_data1$label))
+print(logistic_conf_matrix)
 ```
 
 ```{r}
 # Extract metrics from the confusion matrix
-accuracy_logistic <- conf_matrix$overall['Accuracy']
-balanced_accuracy_logistic <- conf_matrix$byClass['Balanced Accuracy']
-f1_score_logistic <- conf_matrix$byClass['F1']
+accuracy_logistic <- logistic_conf_matrix$overall['Accuracy']
+balanced_accuracy_logistic <- logistic_conf_matrix$byClass['Balanced Accuracy']
+f1_score_logistic <- logistic_conf_matrix$byClass['F1']
 
 # Print the metrics
 cat("Accuracy (Logistic):", accuracy_logistic, "\n")
@@ -333,7 +330,6 @@ cat("F1 Score (Logistic):", f1_score_logistic, "\n")
 
 ```{r}
 # Calculate and plot the ROC curve
-
 roc_curve_logistic <- roc(test_data1$label, logistic_predictions)  # Use probabilities for ROC
 plot(roc_curve_logistic, main = "ROC Curve for Logistic Regression", col='red')
 auc_logistic <- auc(roc_curve_logistic)
@@ -354,7 +350,6 @@ cat("AUC:", round(auc_logistic, 3), "\n")
 
 ```{r}
 library(klaR)
-
 # Train a QDA model (using rda from klaR library to account for the high-dimensional data by introducing a small regularization factor to the covariance matrices, making them invertible even with the few samples available)
 qda_model <- rda(label ~ ., data = train_data1, gamma = 0.01, lambda = 0.5)
 
@@ -364,29 +359,42 @@ summary(qda_model)
 
 ```{r}
 # Predict the label of the test data
-qda_predictions <- predict(rda_model, test_data1[,-1])  # Exclude label column
-predicted_labels_qda <- qda_predictions$class
+qda_predictions <- predict(qda_model, test_data1[,-1])  # Exclude label column
+qda_predicted_labels <- qda_predictions$class
 ```
 
 ```{r}
 # Confusion matrix
-conf_matrix <- confusionMatrix(predicted_labels_qda, as.factor(test_data1$label))
-conf_matrix
+qda_conf_matrix <- confusionMatrix(qda_predicted_labels, as.factor(test_data1$label))
+qda_conf_matrix
 ```
 
 ```{r}
 # Extract metrics from the confusion matrix
-accuracy_logistic <- conf_matrix$overall['Accuracy']
-balanced_accuracy_logistic <- conf_matrix$byClass['Balanced Accuracy']
-f1_score_logistic <- conf_matrix$byClass['F1']
+qda_accuracy <- qda_conf_matrix$overall['Accuracy']
+qda_balanced_accuracy <- qda_conf_matrix$byClass['Balanced Accuracy']
+qda_f1_score <- qda_conf_matrix$byClass['F1']
 
 # Print the metrics
-cat("Accuracy (Logistic):", accuracy_logistic, "\n")
-cat("Balanced Accuracy (Logistic):", balanced_accuracy_logistic, "\n")
-cat("F1 Score (Logistic):", f1_score_logistic, "\n")
+cat("Accuracy (QDA):", qda_accuracy, "\n")
+cat("Balanced Accuracy (QDA):", qda_balanced_accuracy, "\n")
+cat("F1 Score (QDA):", qda_f1_score, "\n")
 ```
 
-```{}
+```{r}
+# Calculate and plot the ROC curve
+roc_curve_qda <- roc(test_data1$label, qda_predictions)  # Use probabilities for ROC
+plot(roc_curve_qda, main = "ROC Curve for QDA", col='red')
+auc_qda <- auc(roc_curve_qda)
+cat("AUC:", auc_qda, "\n")
+```
+
+```{r}
+cat("QDA Model Evaluation Summary:\n")
+cat("Accuracy:", round(qda_accuracy, 3), "\n")
+cat("Balanced Accuracy:", round(qda_balanced_accuracy, 3), "\n")
+cat("F1 Score:", round(qda_f1_score, 3), "\n")
+cat("AUC:", round(qda_auc_value, 3), "\n")
 ```
 
 ### Random Forest
@@ -397,7 +405,6 @@ library(randomForest)
 
 ```{r}
 # Train Random Forest with mtry = sqrt(number of predictors)
-set.seed(1)  # For reproducibility
 p <- ncol(train_data1) - 1  # Number of predictors (excluding the label column)
 train_data1$label <- as.factor(train_data1$label)
 rf_model <- randomForest(label ~ ., data = train_data1, mtry = round(sqrt(p)), ntree = 500, importance = TRUE)
@@ -492,16 +499,16 @@ cat("Accuracy:", accuracy_knn, "\n")
 ```
 
 ```{r}
-precision <- conf_matrix_knn$byClass["Precision"]
-recall <- conf_matrix_knn$byClass["Recall"]
-f1_score_knn <- 2 * ((precision * recall) / (precision + recall))
+precision_knn <- conf_matrix_knn$byClass["Precision"]
+recall_knn <- conf_matrix_knn$byClass["Recall"]
+f1_score_knn <- 2 * ((precision_knn * recall_knn) / (precision_knn + recall_knn))
 cat("F1 Score:", f1_score_knn, "\n")
 ```
 
 ```{r}
-sensitivity <- conf_matrix_knn$byClass["Sensitivity"]
-specificity <- conf_matrix_knn$byClass["Specificity"]
-balanced_accuracy_knn <- (sensitivity + specificity) / 2
+sensitivity_knn <- conf_matrix_knn$byClass["Sensitivity"]
+specificity_knn <- conf_matrix_knn$byClass["Specificity"]
+balanced_accuracy_knn <- (sensitivity_knn + specificity_knn) / 2
 cat("Balanced Accuracy:", balanced_accuracy_knn, "\n")
 ```
 
