@@ -215,15 +215,7 @@ We get that 66.17% of our entries are nullvalues, meaning that our data is very 
 
 ## T1.2 Training and evaluation of classifiers
 
-### Linear Discriminant Analysis (LDA)
-
-```{r}
-#Linear Discriminant Analysis 
-# Loading necessary libraries
-library(MASS)
-library(caret)
-library(pROC)
-```
+### Split data into Train and Test data
 
 ```{r}
 set.seed(123)  # For reproducibility
@@ -232,6 +224,16 @@ set.seed(123)  # For reproducibility
 sample_index <- createDataPartition(RNAdata$label, p = 0.8, list = FALSE)
 train_data1 <- RNAdata[sample_index, ]
 test_data1 <- RNAdata[-sample_index, ]
+```
+
+### Linear Discriminant Analysis (LDA)
+
+```{r}
+#Linear Discriminant Analysis 
+# Loading necessary libraries
+library(MASS)
+library(caret)
+library(pROC)
 ```
 
 ```{r}
@@ -300,7 +302,6 @@ logistic_predictions <- predict(logistic_model, newdata = test_data1, type = "re
 
 # Convert probabilities to class labels (threshold = 0.5)
 logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 2, 1)
-
 ```
 
 ```{r}
@@ -352,18 +353,40 @@ cat("AUC:", round(auc_logistic, 3), "\n")
 ### Quadratic Discriminant Analysis (QDA)
 
 ```{r}
-# Create training (80%) and testing (20%) sets
-library(smotefamily)
 library(klaR)
-library(caret)
 
-# Step 3: Fit the QDA model
-# Ensure `label` is the dependent variable in the formula
-qda_model <- qda(label ~ ., data = RNAdata)
+# Train a QDA model (using rda from klaR library to account for the high-dimensional data by introducing a small regularization factor to the covariance matrices, making them invertible even with the few samples available)
+qda_model <- rda(label ~ ., data = train_data1, gamma = 0.01, lambda = 0.5)
 
-# Step 4: Evaluate the model
-# Predict on the test set
-qda_predictions <- predict(qda_model, test_data2[,-1])  # Exclude label column
+# Print the model summary
+summary(qda_model)
+```
+
+```{r}
+# Predict the label of the test data
+qda_predictions <- predict(rda_model, test_data1[,-1])  # Exclude label column
+predicted_labels_qda <- qda_predictions$class
+```
+
+```{r}
+# Confusion matrix
+conf_matrix <- confusionMatrix(predicted_labels_qda, as.factor(test_data1$label))
+conf_matrix
+```
+
+```{r}
+# Extract metrics from the confusion matrix
+accuracy_logistic <- conf_matrix$overall['Accuracy']
+balanced_accuracy_logistic <- conf_matrix$byClass['Balanced Accuracy']
+f1_score_logistic <- conf_matrix$byClass['F1']
+
+# Print the metrics
+cat("Accuracy (Logistic):", accuracy_logistic, "\n")
+cat("Balanced Accuracy (Logistic):", balanced_accuracy_logistic, "\n")
+cat("F1 Score (Logistic):", f1_score_logistic, "\n")
+```
+
+```{}
 ```
 
 ### Random Forest
