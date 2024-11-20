@@ -11,7 +11,7 @@ editor_options:
 
 ## Introduction
 
-### Forward Stepwise Selection 
+### Forward Stepwise Selection
 
 ```{r}
 install.packages("glmnet")
@@ -24,11 +24,11 @@ library(caret)
 library(glmnet)  # For Lasso Regression
 ```
 
-
 ```{r}
 MLData_Task2 <- read.csv("C:\\Users\\Devisha\\OneDrive - London School of Economics\\Documents\\Machine Learning\\data2.csv.gz")
 str(MLData_Task2)
 ```
+
 ```{r}
 any(is.na(MLData_Task2))
 ```
@@ -48,6 +48,7 @@ test2_data <- MLData_Task2[-train_indices, ]
 cat("Training set size:", nrow(train2_data), "\n")
 cat("Test set size:", nrow(test2_data), "\n")
 ```
+
 ### Lasso Regression
 
 ```{r}
@@ -147,4 +148,3 @@ sensitivity_negative <- ifelse(is.na(sensitivity_negative), 0, sensitivity_negat
 balanced_accuracy <- (sensitivity_positive + sensitivity_negative) / 2
 cat("Balanced Accuracy:", balanced_accuracy, "\n")
 ```
-
