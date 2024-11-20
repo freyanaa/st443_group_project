@@ -584,3 +584,61 @@ svm_average_f1_score <- mean(svm_f1_score_per_class)
 print(paste("SVM Average F1-Score: ", svm_average_f1_score))
 
 ```
+
+### Gradient Boosting Decision Tree (GBDT)
+
+```{r}
+#Packages
+library(gbm)
+library(caret)
+library(pROC)
+```
+
+```{r}
+RNAdata$label <- as.numeric(as.factor(RNAdata$label)) - 1
+
+#Model
+gbm_model <- gbm(label ~ ., data = train_data1, 
+                 distribution = "bernoulli", 
+                 n.trees = 100, 
+                 interaction.depth = 4, 
+                 cv.folds = 5, 
+                 verbose = FALSE)
+
+best_trees <- gbm.perf(gbm_model, method = "cv")
+
+gbdt_predictions <- predict(gbm_model, test_data1[,-1], n.trees = best_trees, type = "response")
+
+gbdt_predictions_class <- ifelse(gbdt_predictions > 0.5, 1, 0)
+```
+
+```{r}
+# Accuracy
+gbdt_accuracy <- mean(gbdt_predictions_class == test_data1$label)
+print(paste("GBDT Accuracy: ", gbdt_accuracy))
+
+# Confusion Matrix
+gbdt_conf_matrix <- confusionMatrix(as.factor(gbdt_predictions_class), as.factor(test_data1$label))
+print(gbdt_conf_matrix)
+
+# Balanced Accuracy
+gbdt_balanced_accuracy <- mean(gbdt_conf_matrix$byClass["Sensitivity"], gbdt_conf_matrix$byClass["Specificity"])
+print(paste("GBDT Balanced Accuracy: ", gbdt_balanced_accuracy))
+
+# F1 Score
+gbdt_f1_score <- 2 * (gbdt_conf_matrix$byClass["Precision"] * gbdt_conf_matrix$byClass["Recall"]) / 
+  (gbdt_conf_matrix$byClass["Precision"] + gbdt_conf_matrix$byClass["Recall"])
+print(paste("GBDT F1 Score: ", gbdt_f1_score))
+
+# AUC 
+gbdt_roc_curve <- roc(test_data1$label, gbdt_predictions)
+gbdt_auc_value <- auc(gbdt_roc_curve)
+print(paste("GBDT AUC: ", gbdt_auc_value))
+
+# ROC Curve
+plot.roc(gbdt_roc_curve, main = "GBDT ROC Curve", col = "blue", lwd = 2)
+
+```
+
+## T1.3 Training and evaluation of classifiers
+
