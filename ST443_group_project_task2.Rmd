@@ -10,3 +10,115 @@ editor_options:
 # Task 2: Feature selection
 
 ## Introduction
+
+### Forward Stepwise Selection 
+
+```{r}
+install.packages("glmnet")
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(caret)
+library(glmnet)  # For Lasso Regression
+```
+
+
+```{r}
+MLData_Task2 <- read.csv("C:\\Users\\Devisha\\OneDrive - London School of Economics\\Documents\\Machine Learning\\data2.csv.gz")
+str(MLData_Task2)
+```
+```{r}
+any(is.na(MLData_Task2))
+```
+
+```{r}
+# Random split (80% training, 20% testing)
+set.seed(123)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+```
+
+```{r}
+# Create training and testing datasets
+train2_data <- MLData_Task2[train_indices, ]
+test2_data <- MLData_Task2[-train_indices, ]
+
+# Verify split
+cat("Training set size:", nrow(train2_data), "\n")
+cat("Test set size:", nrow(test2_data), "\n")
+```
+### Lasso Regression
+
+```{r}
+# Train Lasso Regression with cross-validation
+set.seed(123)
+lasso_model <- cv.glmnet(as.matrix(train2_data[, -1]), train_data2$label, alpha = 1, family = "binomial")
+```
+
+```{r}
+# Best lambda from cross-validation
+best_lambda <- lasso_model$lambda.min
+cat("Best lambda selected:", best_lambda, "\n")
+```
+
+```{r}
+# Manually reduce regularization strength
+adjusted_lambda <- best_lambda * 0.5  # Halve the penalty strength
+selected_features <- which(coef(lasso_model, s = adjusted_lambda)[-1] != 0)
+cat("Number of selected features:", length(selected_features), "\n")
+```
+
+```{r}
+# Subset the training and test sets
+train_X_lasso <- as.matrix(train2_data[, selected_features, drop = FALSE])
+test_X_lasso <- as.matrix(test2_data[, selected_features, drop = FALSE])
+train2_Y <- train2_data$label
+test2_Y <- test2_data$label
+
+# Verify dimensions
+cat("Training set dimensions after feature selection:", dim(train_X_lasso), "\n")
+cat("Test set dimensions after feature selection:", dim(test_X_lasso), "\n")
+```
+
+```{r}
+# Refitting the Lasso model
+set.seed(123)
+lasso_model_selected <- glmnet(train_X_lasso, train2_Y, alpha = 1, family = "binomial")
+```
+
+```{r}
+# Predict probabilities for the positive class
+lasso_probs <- predict(lasso_model_selected, newx = test_X_lasso, s = best_lambda, type = "response")
+
+```
+
+```{r}
+# Convert probabilities to class labels (threshold = 0.5)
+lasso_predictions <- ifelse(lasso_probs > 0.5, 1, -1) 
+lasso_predictions <- as.factor(lasso_predictions)
+```
+
+```{r}
+# Align levels
+test2_Y <- as.factor(test2_Y)
+common_levels <- union(levels(lasso_predictions), levels(test2_Y))
+lasso_predictions <- factor(lasso_predictions, levels = common_levels)
+test2_Y <- factor(test2_Y, levels = common_levels)
+```
+
+```{r}
+# Compute confusion matrix
+conf_matrix_lasso <- confusionMatrix(lasso_predictions, test2_Y)
+print(conf_matrix_lasso)
+```
+
+```{r}
+# Calculate Balanced Accuracy and F1 Score
+balanced_accuracy <- mean(conf_matrix_lasso$byClass["Balanced Accuracy"], na.rm = TRUE)
+f1_score <- mean(conf_matrix_lasso$byClass["F1"], na.rm = TRUE)
+
+cat("Balanced Accuracy:", balanced_accuracy, "\n")
+cat("F1 Score:", f1_score, "\n")
+```
+
