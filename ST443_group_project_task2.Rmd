@@ -54,7 +54,7 @@ cat("Test set size:", nrow(test2_data), "\n")
 ```{r}
 # Train Lasso Regression with cross-validation
 set.seed(123)
-lasso_model <- cv.glmnet(as.matrix(train2_data[, -1]), train_data2$label, alpha = 1, family = "binomial")
+lasso_model <- cv.glmnet(as.matrix(train2_data[, -1]), train2_data$label, alpha = 1, family = "binomial")
 ```
 
 ```{r}
@@ -112,13 +112,39 @@ test2_Y <- factor(test2_Y, levels = common_levels)
 # Compute confusion matrix
 conf_matrix_lasso <- confusionMatrix(lasso_predictions, test2_Y)
 print(conf_matrix_lasso)
+
+# Extract the confusion matrix table
+conf_matrix_table <- conf_matrix_lasso$table
+
+# Extract True Positives, True Negatives, False Positives, False Negatives
+TP <- conf_matrix_table["-1", "-1"]  # True Positives for class -1
+TN <- conf_matrix_table["1", "1"]    # True Negatives for class 1
+FP <- conf_matrix_table["1", "-1"]   # False Positives
+FN <- conf_matrix_table["-1", "1"]   # False Negatives
+
+# Print extracted values
+cat("True Positives (TP):", TP, "\n")
+cat("True Negatives (TN):", TN, "\n")
+cat("False Positives (FP):", FP, "\n")
+cat("False Negatives (FN):", FN, "\n")
 ```
 
 ```{r}
-# Calculate Balanced Accuracy and F1 Score
-balanced_accuracy <- mean(conf_matrix_lasso$byClass["Balanced Accuracy"], na.rm = TRUE)
-f1_score <- mean(conf_matrix_lasso$byClass["F1"], na.rm = TRUE)
+#calculating Sensitivity (Recall) for Positive and Negative Classes
+sensitivity_positive <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))  # Sensitivity for Positive class (-1)
+sensitivity_negative <- ifelse((TN + FP) == 0, NA, TN / (TN + FP))  # Sensitivity for Negative class (1)
+```
 
+
+```{r}
+# Handling NaN or NA values in sensitivities
+sensitivity_positive <- ifelse(is.na(sensitivity_positive), 0, sensitivity_positive)
+sensitivity_negative <- ifelse(is.na(sensitivity_negative), 0, sensitivity_negative)
+```
+
+
+```{r}
+# Calculating Balanced Accuracy
+balanced_accuracy <- (sensitivity_positive + sensitivity_negative) / 2
 cat("Balanced Accuracy:", balanced_accuracy, "\n")
-cat("F1 Score:", f1_score, "\n")
 ```
