@@ -148,3 +148,4 @@ sensitivity_negative <- ifelse(is.na(sensitivity_negative), 0, sensitivity_negat
 balanced_accuracy <- (sensitivity_positive + sensitivity_negative) / 2
 cat("Balanced Accuracy:", balanced_accuracy, "\n")
 ```
+
