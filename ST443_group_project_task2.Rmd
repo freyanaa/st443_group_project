@@ -148,3 +148,96 @@ sensitivity_negative <- ifelse(is.na(sensitivity_negative), 0, sensitivity_negat
 balanced_accuracy <- (sensitivity_positive + sensitivity_negative) / 2
 cat("Balanced Accuracy:", balanced_accuracy, "\n")
 ```
+#### Random Forest - Feature Selectionm 
+
+```{r}
+library(randomForest)
+library(caret) # For confusion matrix and other metrics
+```
+
+
+```{r}
+set.seed(42)  # For reproducibility
+
+# Split into training and test sets (70-30 split)
+RF_train_index <- createDataPartition(MLData_Task2$label, p = 0.7, list = FALSE)
+RF_train_data <- MLData_Task2[RF_train_index, ]
+RF_test_data <- MLData_Task2[-RF_train_index, ]
+
+# Separate features and labels
+RFtrain_X <- RF_train_data[, -ncol(RF_train_data)]  # Exclude label column
+RFtrain_Y <- RF_train_data$label
+
+RFtest_X <- RF_test_data[, -ncol(RF_test_data)]  # Exclude label column
+RFtest_Y <- RF_test_data$label
+```
+
+```{r}
+RFtrain_Y <- factor(RF_train_data$label)        # Convert label to factor for classification
+RFtest_Y <- factor(RF_test_data$label)         # Convert label to factor for classification
+```
+
+```{r}
+# Define the hyperparameter grid for tuning
+tune_grid <- expand.grid(
+  mtry = c(2, 5, 10)  # Number of features considered at each split
+)
+```
+
+```{r}
+# Set up cross-validation
+control <- trainControl(
+  method = "cv",            # Cross-validation
+  number = 5,               # 5-fold CV
+  verboseIter = TRUE,       # Print progress
+  savePredictions = "final" # Save predictions
+)
+```
+
+```{r}
+# Train the model
+set.seed(42)
+rf_tuned_model <- train(
+  x = RFtrain_X,
+  y = RFtrain_Y,
+  method = "rf",
+  metric = "Accuracy",      # Metric to optimize
+  tuneGrid = tune_grid,     # Hyperparameter grid
+  trControl = control,
+  ntree = 200               # Number of trees
+)
+
+# Display the best parameters
+print(rf_tuned_model$bestTune)
+```
+
+```{r}
+# Predictting on test set
+rf_predictions <- predict(rf_tuned_model, newdata = RFtest_X)
+```
+
+```{r}
+# Confusion matrix
+conf_matrix_rf <- confusionMatrix(rf_predictions, RFtest_Y)
+
+# Display confusion matrix
+print(conf_matrix_rf)
+```
+
+```{r}
+# Calculate Balanced Accuracy
+TP <- conf_matrix_rf$table[2, 2]  # True Positives
+TN <- conf_matrix_rf$table[1, 1]  # True Negatives
+FP <- conf_matrix_rf$table[1, 2]  # False Positives
+FN <- conf_matrix_rf$table[2, 1]  # False Negatives
+
+# Avoiding division by zero
+sensitivity <- ifelse((TP + FN) > 0, TP / (TP + FN), 0)
+specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), 0)
+
+# Calculating Balanced Accuracy
+balanced_accuracy <- (sensitivity + specificity) / 2
+
+cat("Balanced Accuracy:", balanced_accuracy, "\n")
+```
+
