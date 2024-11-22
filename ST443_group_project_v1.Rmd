@@ -551,7 +551,6 @@ cat("F1 Score:", round(f1_score_knn, 3), "\n")
 cat("AUC:", round(auc_value_knn, 3), "\n")
 ```
 
-
 ### Support Vector Machine (SVM)
 
 ```{r}
@@ -648,4 +647,3 @@ plot.roc(gbdt_roc_curve, main = "GBDT ROC Curve", col = "blue", lwd = 2)
 ```
 
 ## T1.3 Training and evaluation of classifiers
-
