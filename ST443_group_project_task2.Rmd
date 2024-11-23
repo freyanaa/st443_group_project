@@ -11,22 +11,19 @@ editor_options:
 
 ## Introduction
 
-### Forward Stepwise Selection
-
-```{r}
-install.packages("glmnet")
-```
+### Data Preparation and split into Train and Test Data
 
 ```{r}
 library(ggplot2)
 library(dplyr)
 library(caret)
-library(glmnet)  # For Lasso Regression
+library(glmnet)
+library(pROC)
 ```
 
 ```{r}
-MLData_Task2 <- read.csv("C:\\Users\\Devisha\\OneDrive - London School of Economics\\Documents\\Machine Learning\\data2.csv.gz")
-str(MLData_Task2)
+MLData_Task2 <- read.csv("data2.csv.gz", header=TRUE)
+View(MLData_Task2)
 ```
 
 ```{r}
@@ -44,97 +41,98 @@ train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
 train2_data <- MLData_Task2[train_indices, ]
 test2_data <- MLData_Task2[-train_indices, ]
 
+# Prepare data
+train_X <- as.matrix(train2_data[, -1])  # Exclude label column
+test_X <- as.matrix(test2_data[, -1])  # Exclude label column
+train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))  # Convert to 0 and 1
+test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))  # Convert to 0 and 1
+
 # Verify split
 cat("Training set size:", nrow(train2_data), "\n")
 cat("Test set size:", nrow(test2_data), "\n")
 ```
 
-### Lasso Regression
+```{r}
+# Count the number of each class to see whether the dataset is balanced
+table(train_Y)
+table(test_Y)
+```
+
+We can see that the data is heavily imbalanced - it contains much more observations of class 0 than of class 1.
+
+### Lasso with Logistic Regression
+
+At first, we use cross-validation on the full feature set to determine the best penalty coefficient lambda for the dataset.
 
 ```{r}
 # Train Lasso Regression with cross-validation
 set.seed(123)
-lasso_model <- cv.glmnet(as.matrix(train2_data[, -1]), train2_data$label, alpha = 1, family = "binomial")
+lasso_cv_full <- cv.glmnet(train_X, train_Y, alpha = 1, family = "binomial")
 ```
 
 ```{r}
-# Best lambda from cross-validation
-best_lambda <- lasso_model$lambda.min
+# Best lambda from cross-validation (the one with the lowest cross-validation error)
+# For comment: The larger the lambda, the more coefficients have been sunk to zero
+best_lambda <- lasso_cv_full$lambda.min
 cat("Best lambda selected:", best_lambda, "\n")
 ```
 
-```{r}
-# Manually reduce regularization strength
-adjusted_lambda <- best_lambda * 0.5  # Halve the penalty strength
-selected_features <- which(coef(lasso_model, s = adjusted_lambda)[-1] != 0)
-cat("Number of selected features:", length(selected_features), "\n")
-```
+As we realised that our dataset is heavily imbalanced, i.e. there are much more observations of class 0 than class 1, we take that into account when fitting our lasso model with the selected best lambda.
 
 ```{r}
-# Subset the training and test sets
-train_X_lasso <- as.matrix(train2_data[, selected_features, drop = FALSE])
-test_X_lasso <- as.matrix(test2_data[, selected_features, drop = FALSE])
-train2_Y <- train2_data$label
-test2_Y <- test2_data$label
+# Calculate weights
+n_class0 <- 580  # Number of samples in class 0
+n_class1 <- 60   # Number of samples in class 1
+n_total <- n_class0 + n_class1
 
-# Verify dimensions
-cat("Training set dimensions after feature selection:", dim(train_X_lasso), "\n")
-cat("Test set dimensions after feature selection:", dim(test_X_lasso), "\n")
+weight_class0 <- n_total / n_class0
+weight_class1 <- n_total / n_class1
+
+# Assign weights to each observation
+weights <- ifelse(train_Y == 0, weight_class0, weight_class1)
+lasso_model <- glmnet(train_X, train_Y, alpha = 1, family = "binomial", lambda = best_lambda, weights = weights)
 ```
 
-```{r}
-# Refitting the Lasso model
-set.seed(123)
-lasso_model_selected <- glmnet(train_X_lasso, train2_Y, alpha = 1, family = "binomial")
-```
+Predict the probabilities on the test data
 
 ```{r}
 # Predict probabilities for the positive class
-lasso_probs <- predict(lasso_model_selected, newx = test_X_lasso, s = best_lambda, type = "response")
-
+lasso_probs <- predict(lasso_model, newx= test_X, s= best_lambda, type = "response")
+# Ensure that the outout is a numeric vector
+lasso_probs <- as.numeric(lasso_probs)
 ```
 
+Now we convert the predicted probabilities into the class labels at the optimal threshold.
+
 ```{r}
-# Convert probabilities to class labels (threshold = 0.5)
-lasso_predictions <- ifelse(lasso_probs > 0.5, 1, -1) 
+# Convert probabilities to class labels at optimal threshold
+lasso_predictions <- ifelse(lasso_probs > 0.01, 0, 1) 
 lasso_predictions <- as.factor(lasso_predictions)
 ```
 
-```{r}
-# Align levels
-test2_Y <- as.factor(test2_Y)
-common_levels <- union(levels(lasso_predictions), levels(test2_Y))
-lasso_predictions <- factor(lasso_predictions, levels = common_levels)
-test2_Y <- factor(test2_Y, levels = common_levels)
-```
+Assessment of our model:
 
 ```{r}
 # Compute confusion matrix
-conf_matrix_lasso <- confusionMatrix(lasso_predictions, test2_Y)
+conf_matrix_lasso <- confusionMatrix(lasso_predictions, test_Y)
 print(conf_matrix_lasso)
 
 # Extract the confusion matrix table
 conf_matrix_table <- conf_matrix_lasso$table
+conf_matrix_table
 
-# Extract True Positives, True Negatives, False Positives, False Negatives
-TP <- conf_matrix_table["-1", "-1"]  # True Positives for class -1
-TN <- conf_matrix_table["1", "1"]    # True Negatives for class 1
-FP <- conf_matrix_table["1", "-1"]   # False Positives
-FN <- conf_matrix_table["-1", "1"]   # False Negatives
-
-# Print extracted values
-cat("True Positives (TP):", TP, "\n")
-cat("True Negatives (TN):", TN, "\n")
-cat("False Positives (FP):", FP, "\n")
-cat("False Negatives (FN):", FN, "\n")
+# True positives and false negatives
+TP <- sum(lasso_predictions == 0 & test_Y == 0)
+FP <- sum(lasso_predictions == 0 & test_Y == 1)
+TN <- sum(lasso_predictions == 1 & test_Y == 1)
+FN <- sum(lasso_predictions == 1 & test_Y == 0)
 ```
 
 ```{r}
 #calculating Sensitivity (Recall) for Positive and Negative Classes
-sensitivity_positive <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))  # Sensitivity for Positive class (-1)
+sensitivity_positive <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))  # Sensitivity for Positive class (0)
 sensitivity_negative <- ifelse((TN + FP) == 0, NA, TN / (TN + FP))  # Sensitivity for Negative class (1)
 ```
-
 
 ```{r}
 # Handling NaN or NA values in sensitivities
@@ -142,19 +140,18 @@ sensitivity_positive <- ifelse(is.na(sensitivity_positive), 0, sensitivity_posit
 sensitivity_negative <- ifelse(is.na(sensitivity_negative), 0, sensitivity_negative)
 ```
 
-
 ```{r}
 # Calculating Balanced Accuracy
 balanced_accuracy <- (sensitivity_positive + sensitivity_negative) / 2
 cat("Balanced Accuracy:", balanced_accuracy, "\n")
 ```
-#### Random Forest - Feature Selectionm 
+
+#### Random Forest - Feature Selection
 
 ```{r}
 library(randomForest)
-library(caret) # For confusion matrix and other metrics
+library(caret)
 ```
-
 
 ```{r}
 set.seed(42)  # For reproducibility
@@ -176,6 +173,8 @@ RFtest_Y <- RF_test_data$label
 RFtrain_Y <- factor(RF_train_data$label)        # Convert label to factor for classification
 RFtest_Y <- factor(RF_test_data$label)         # Convert label to factor for classification
 ```
+
+For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, this would mean m = sqrt(100,000) = \~316, which is way to computationally expensive. For the same reason, we reduce the default of 500 trained trees to 200 trees.
 
 ```{r}
 # Define the hyperparameter grid for tuning
@@ -240,4 +239,3 @@ balanced_accuracy <- (sensitivity + specificity) / 2
 
 cat("Balanced Accuracy:", balanced_accuracy, "\n")
 ```
-
