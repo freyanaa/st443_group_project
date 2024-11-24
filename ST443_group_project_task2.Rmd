@@ -146,35 +146,31 @@ balanced_accuracy <- (sensitivity_positive + sensitivity_negative) / 2
 cat("Balanced Accuracy:", balanced_accuracy, "\n")
 ```
 
-#### Random Forest - Feature Selection
+#### Random Forest for Feature Selection
 
 ```{r}
 library(randomForest)
 library(caret)
 ```
 
-```{r}
-set.seed(42)  # For reproducibility
-
-# Split into training and test sets (70-30 split)
-RF_train_index <- createDataPartition(MLData_Task2$label, p = 0.7, list = FALSE)
-RF_train_data <- MLData_Task2[RF_train_index, ]
-RF_test_data <- MLData_Task2[-RF_train_index, ]
-
-# Separate features and labels
-RFtrain_X <- RF_train_data[, -ncol(RF_train_data)]  # Exclude label column
-RFtrain_Y <- RF_train_data$label
-
-RFtest_X <- RF_test_data[, -ncol(RF_test_data)]  # Exclude label column
-RFtest_Y <- RF_test_data$label
-```
+For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, this would mean m = sqrt(100,000) = \~316, which is way to computationally expensive. Thus we will apply a pre-selection of features by removing those features with a variance below 0.01 - given the low variance these features will in no case serve as good predictors for our classification task.
 
 ```{r}
-RFtrain_Y <- factor(RF_train_data$label)        # Convert label to factor for classification
-RFtest_Y <- factor(RF_test_data$label)         # Convert label to factor for classification
+# Calculate the variance of each feature
+feature_variances <- apply(MLData_Task2[, -1], 2, var)
+
+# Identify features with variance >= 0.01
+selected_features <- which(feature_variances >= 0.01)
+
+# Subset the dataset to keep only selected features
+filtered_dataset <- MLData_Task2[, selected_features]
+
+# Print the number of features removed
+cat("Number of features removed:", ncol(MLData_Task2) - length(selected_features), "\n")
+cat("Number of features retained:", length(selected_features), "\n")
 ```
 
-For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, this would mean m = sqrt(100,000) = \~316, which is way to computationally expensive. For the same reason, we reduce the default of 500 trained trees to 200 trees.
+sqrt(30,121) still leaves \~173 features to be considered at each split. This is still too computationally expensive, thus we will try for 2, 5 and 10.
 
 ```{r}
 # Define the hyperparameter grid for tuning
@@ -194,11 +190,14 @@ control <- trainControl(
 ```
 
 ```{r}
+# Create new training and test data set with only selected features
+train_X = train_x[, selected_features]
+
 # Train the model
 set.seed(42)
 rf_tuned_model <- train(
-  x = RFtrain_X,
-  y = RFtrain_Y,
+  x = train_X,
+  y = train_Y,
   method = "rf",
   metric = "Accuracy",      # Metric to optimize
   tuneGrid = tune_grid,     # Hyperparameter grid
