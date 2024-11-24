@@ -237,7 +237,6 @@ test_data1 <- RNAdata[-sample_index, ]
 ```{r}
 # Train the LDA model
 lda_model <- lda(label ~ ., data = train_data1)
-print(lda_model)
 ```
 
 ```{r}
@@ -254,15 +253,15 @@ lda_conf_matrix
 
 ```{r}
 # Extracting specific metrics
-lda_accuracy <- conf_matrix$overall['Accuracy']
-lda_balanced_accuracy <- conf_matrix$byClass['Balanced Accuracy']
-lda_f1_score <- conf_matrix$byClass['F1']
+lda_accuracy <- lda_conf_matrix$overall['Accuracy']
+lda_balanced_accuracy <- lda_conf_matrix$byClass['Balanced Accuracy']
+lda_f1_score <- lda_conf_matrix$byClass['F1']
 ```
 
 ```{r}
-cat("Accuracy:", lda_accuracy, "\n")
-cat("Balanced Accuracy:", lda_balanced_accuracy, "\n")
-cat("F1 Score:", lda_f1_score, "\n")
+cat("LDA Accuracy:", lda_accuracy, "\n")
+cat("LDA Balanced Accuracy:", lda_balanced_accuracy, "\n")
+cat("LDA F1 Score:", lda_f1_score, "\n")
 ```
 
 ```{r}
@@ -287,16 +286,22 @@ cat("AUC:", round(lda_auc_value, 3), "\n")
 ### Logistic Classifier
 
 ```{r}
+train_data_log <- train_data1
+test_data_log <- test_data1
+
+train_data_log$label <- ifelse(train_data_log$label == "TREG", 1, 0)
+test_data_log$label <- ifelse(test_data_log$label == "TREG", 1, 0)
+
 # Train a logistic regression model
-logistic_model <- glm(label ~ ., data = train_data1, family = binomial)
+logistic_model <- glm(label ~ ., data = train_data_log, family = binomial)
 
 # Print the model summary
-summary(logistic_model)
+#summary(logistic_model)
 ```
 
 ```{r}
 # Predict probabilities on the test set
-logistic_predictions <- predict(logistic_model, test_data1[, -1], type = "response")
+logistic_predictions <- predict(logistic_model, test_data_log[, -1], type = "response")
 
 # Convert probabilities to class labels (threshold = 0.5)
 logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 2, 1)
@@ -304,7 +309,7 @@ logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 2, 1)
 
 ```{r}
 # Calculate test error
-logistic_test_error <- mean(logistic_predicted_labels != test_data1$label)
+logistic_test_error <- mean(logistic_predicted_labels != test_data_log$label)
 
 # Print the test error
 cat("Test Error (Logistic):", round(logistic_test_error, 3), "\n")
@@ -312,7 +317,7 @@ cat("Test Error (Logistic):", round(logistic_test_error, 3), "\n")
 
 ```{r}
 # Confusion matrix
-logistic_conf_matrix <- confusionMatrix(as.factor(logistic_predicted_labels), as.factor(test_data1$label))
+logistic_conf_matrix <- confusionMatrix(as.factor(logistic_predicted_labels), as.factor(test_data_log$label))
 print(logistic_conf_matrix)
 ```
 
@@ -330,7 +335,7 @@ cat("F1 Score (Logistic):", f1_score_logistic, "\n")
 
 ```{r}
 # Calculate and plot the ROC curve
-roc_curve_logistic <- roc(test_data1$label, logistic_predictions)  # Use probabilities for ROC
+roc_curve_logistic <- roc(test_data_log$label, logistic_predictions)  # Use probabilities for ROC
 plot(roc_curve_logistic, main = "ROC Curve for Logistic Regression", col='red')
 auc_logistic <- auc(roc_curve_logistic)
 cat("AUC:", auc_logistic, "\n")
@@ -559,20 +564,26 @@ library(e1071)
 ```
 
 ```{r}
-RNAdata$label <- factor(RNAdata$label)
+test_data_factor <- test_data1
+train_data_factor <- train_data1
+#View(test_data_factor)
+
+test_data_factor$label <- factor(test_data_factor$label)
+train_data_factor$label <- factor(train_data_factor$label)
+View(test_data_factor)
 
 #Model
-svm_model <- svm(train_data1$label ~ ., data = train_data1, kernel = "linear")
-svm_predictions <- predict(svm_model, test_data1[,-1])
+svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear")
+svm_predictions <- predict(svm_model, test_data_factor[,-1])
 ```
 
 ```{r}
 # Accuracy
-svm_accuracy <- mean(svm_predictions == test_data1$label)
+svm_accuracy <- mean(svm_predictions == test_data_factor$label)
 print(paste("SVM Accuracy: ", svm_accuracy))
 
 # Confusion matrix
-svm_conf_matrix <- table(Predicted = svm_predictions, Actual = test_data1$label)
+svm_conf_matrix <- table(Predicted = svm_predictions, Actual = test_data_factor$label)
 print(svm_conf_matrix)
 
 svm_recall_per_class <- diag(svm_conf_matrix) / rowSums(svm_conf_matrix)
@@ -601,30 +612,38 @@ library(pROC)
 ```
 
 ```{r}
-RNAdata$label <- as.numeric(as.factor(RNAdata$label)) - 1
+#RNAdata$label <- as.numeric(as.factor(RNAdata$label)) - 1
+
+test_data_gbdt <- test_data1
+train_data_gbdt <- train_data1
+
+test_data_gbdt$label <- as.numeric(as.factor(test_data_gbdt$label)) - 1
+train_data_gbdt$label <- as.numeric(as.factor(train_data_gbdt$label)) - 1
 
 #Model
-gbm_model <- gbm(label ~ ., data = train_data1, 
+gbm_model <- gbm(label ~ ., data = train_data_gbdt, 
                  distribution = "bernoulli", 
-                 n.trees = 100, 
-                 interaction.depth = 4, 
-                 cv.folds = 5, 
+                 n.trees = 150, 
+                 interaction.depth = 5, 
+                 cv.folds = 5,
+                 shrinkage = 0.1,
+                 n.minobsinnode = 20,
                  verbose = FALSE)
 
 best_trees <- gbm.perf(gbm_model, method = "cv")
 
-gbdt_predictions <- predict(gbm_model, test_data1[,-1], n.trees = best_trees, type = "response")
+gbdt_predictions <- predict(gbm_model, test_data_gbdt[,-1], n.trees = best_trees, type = "response")
 
 gbdt_predictions_class <- ifelse(gbdt_predictions > 0.5, 1, 0)
 ```
 
 ```{r}
 # Accuracy
-gbdt_accuracy <- mean(gbdt_predictions_class == test_data1$label)
+gbdt_accuracy <- mean(gbdt_predictions_class == test_data_gbdt$label)
 print(paste("GBDT Accuracy: ", gbdt_accuracy))
 
 # Confusion Matrix
-gbdt_conf_matrix <- confusionMatrix(as.factor(gbdt_predictions_class), as.factor(test_data1$label))
+gbdt_conf_matrix <- confusionMatrix(as.factor(gbdt_predictions_class), as.factor(test_data_gbdt$label))
 print(gbdt_conf_matrix)
 
 # Balanced Accuracy
@@ -637,7 +656,7 @@ gbdt_f1_score <- 2 * (gbdt_conf_matrix$byClass["Precision"] * gbdt_conf_matrix$b
 print(paste("GBDT F1 Score: ", gbdt_f1_score))
 
 # AUC 
-gbdt_roc_curve <- roc(test_data1$label, gbdt_predictions)
+gbdt_roc_curve <- roc(test_data_gbdt$label, gbdt_predictions)
 gbdt_auc_value <- auc(gbdt_roc_curve)
 print(paste("GBDT AUC: ", gbdt_auc_value))
 
