@@ -95,52 +95,123 @@ cat("Test set size:", nrow(test2_data), "\n")
 
 ### Lasso with Logistic Regression
 
-At first, we use cross-validation on the full feature set to determine the best penalty coefficient lambda for the dataset.
+As we are dealing with an extremly high-dimensional dataset, we will perform a feature-pre-selection based on the variance of the features
 
 ```{r}
-# Train Lasso Regression with cross-validation
-set.seed(123)
-lasso_cv_full <- cv.glmnet(train_X, train_Y, alpha = 1, family = "binomial")
+# Calculate the variance of each feature
+feature_variances <- apply(train_X, 2, var)
+
+# Identify features with variance >= 0.01
+selected_features <- which(feature_variances >= 0.01)
+
+# Print the number of features removed
+cat("Number of features removed:", ncol(train_X) - length(selected_features), "\n")
+cat("Number of features retained:", length(selected_features), "\n")
+
+# Apply on training and test dataset
+train_X <- train_X[, selected_features]
+test_X <- test_X[, selected_features]
+```
+
+The performance metric that we are trying to optimize is the balanced accuracy. To be able to access this metric in our cross-validation when trying to find the best shrinkage parameter lambda, we store the balanced accuracy as a function.
+
+```{r}
+# Define custom balanced accuracy function
+calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
+  confusion_matrix <- table(data$obs, data$pred)
+  
+  # Handle edge cases
+  if (nrow(confusion_matrix) < 2 || ncol(confusion_matrix) < 2) {
+    sensitivity <- 0
+    specificity <- 0
+  } else {
+    TP <- confusion_matrix[2, 2]
+    FN <- confusion_matrix[2, 1]
+    TN <- confusion_matrix[1, 1]
+    FP <- confusion_matrix[1, 2]
+    sensitivity <- TP / (TP + FN)  # True Positive Rate
+    specificity <- TN / (TN + FP)  # True Negative Rate
+  }
+  
+  balanced_acc <- (sensitivity + specificity) / 2
+  return(c(BalancedAccuracy = balanced_acc))
+}
+```
+
+Because of the high imbalance in classes in our dataset, we will assign weights according to the share of the different classes in the dataset and pass these to our model.
+
+```{r}
+train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
+class_weights <- ifelse(train_Y == "Class1",
+                        1 / sum(train_Y == "Class1"),
+                        1 / sum(train_Y == "Class0"))
+```
+
+We will perform a 5-fold cross validation on the data using the train control function and balanced accuracy as the metric for evaluation to find the best value for the penalty coefficient lambda.
+
+```{r}
+# Define train control with custom summaryFunction
+train_control <- trainControl(
+  method = "cv",                     # Cross-validation
+  number = 10,                        # Number of folds
+  summaryFunction = calculate_balanced_accuracy, # Use custom metric
+  classProbs = TRUE,                 # Enable probability calculations
+  savePredictions = "final"          # Save predictions for further analysis
+)
 ```
 
 ```{r}
-# Best lambda from cross-validation (the one with the lowest cross-validation error)
-# For comment: The larger the lambda, the more coefficients have been sunk to zero
-best_lambda <- lasso_cv_full$lambda.min
-cat("Best lambda selected:", best_lambda, "\n")
+# Define grid for lambda values
+lambda_grid <- expand.grid(
+  alpha = 1,                          # LASSO (alpha = 1)
+  lambda = 10^seq(-5, -0.5, length.out = 10) # Lambda grid
+)
 ```
 
-As we realised that our dataset is heavily imbalanced, i.e. there are much more observations of class 0 than class 1, we take that into account when fitting our lasso model with the selected best lambda.
+```{r}
+# Train LASSO model
+set.seed(42)
+lasso_model <- train(
+  x = train_X,
+  y = train_Y,
+  method = "glmnet",                  # Use glmnet for LASSO
+  trControl = train_control,          # Custom train control
+  tuneGrid = lambda_grid,             # Grid of lambdas
+  metric = "BalancedAccuracy",        # Optimize balanced accuracy
+  weights = class_weights
+)
+```
 
 ```{r}
-# Calculate weights
-n_class0 <- 580  # Number of samples in class 0
-n_class1 <- 60   # Number of samples in class 1
-n_total <- n_class0 + n_class1
+# Print the best lambda
+best_lambda <- lasso_model$bestTune$lambda
+print(lasso_model$bestTune)
+```
 
-weight_class0 <- n_total / n_class0
-weight_class1 <- n_total / n_class1
+```{r}
+# View results
+print(lasso_model$results)
 
-# Assign weights to each observation
-weights <- ifelse(train_Y == 0, weight_class0, weight_class1)
-lasso_model <- glmnet(train_X, train_Y, alpha = 1, family = "binomial", lambda = best_lambda, weights = weights)
+# Plot results
+plot(lasso_model)
 ```
 
 Predict the probabilities on the test data
 
 ```{r}
-# Predict probabilities for the positive class
-lasso_probs <- predict(lasso_model, newx= test_X, s= best_lambda, type = "response")
-# Ensure that the outout is a numeric vector
-lasso_probs <- as.numeric(lasso_probs)
+# Predict probabilities for the test set
+lasso_probs <- predict(lasso_model, newdata = test_X, type = "prob", s=best_lambda)
+
+# Extract probabilities for the positive class
+lasso_probs <- lasso_probs[, "Class1"]
 ```
 
 Now we convert the predicted probabilities into the class labels at the optimal threshold.
 
 ```{r}
 # Convert probabilities to class labels at optimal threshold
-lasso_predictions <- ifelse(lasso_probs > 0.01, 0, 1) 
-lasso_predictions <- as.factor(lasso_predictions)
+lasso_predictions <- ifelse(lasso_probs > best_lambda, 0, 1) 
+lasso_predictions <- factor(lasso_predictions, levels = levels(test_Y))
 ```
 
 Assessment of our model:
