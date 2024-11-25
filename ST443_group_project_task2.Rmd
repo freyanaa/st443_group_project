@@ -482,57 +482,86 @@ cat("Unique values in test labels after conversion:", unique(GBtest_data_pca$lab
 ```
 
 ```{r}
-# Training GBM model on PCA-reduced data
+# Ensuring label is a factor with two levels (0 and 1)
+GBtrain_data_pca$label <- factor(GBtrain_data_pca$label, levels = c(0, 1))
+GBtest_data_pca$label <- factor(GBtest_data_pca$label, levels = c(0, 1))
+```
+
+```{r}
+# Ensuring that factor levels are valid R variable names
+levels(GBtrain_data_pca$label) <- make.names(levels(GBtrain_data_pca$label))
+levels(GBtest_data_pca$label) <- make.names(levels(GBtest_data_pca$label))
+```
+
+```{r}
+# Set up cross-validation with class probabilities
+GBcontrol <- trainControl(
+  method = "cv",           # Cross-validation
+  number = 5,              # 5-fold CV
+  search = "grid",         # Grid search for hyperparameters
+  verboseIter = TRUE,      # Print progress
+  classProbs = TRUE,       # Enable class probability estimation for classification
+  summaryFunction = twoClassSummary # Use twoClassSummary to calculate performance metrics (ROC, Sens, Spec)
+)
+```
+
+```{r}
+#Defining a range of shrinkage values to try
+shrinkage_values <- c(0.01, 0.05, 0.1, 0.2)
+```
+
+```{r}
+# Creating a grid of parameters to search
+GBtune_grid <- expand.grid(
+  shrinkage = shrinkage_values,  # Learning rate
+  n.trees = 100,                 # Number of trees
+  interaction.depth = 3,         # Tree depth
+  n.minobsinnode = 10           # Minimum observations in terminal nodes
+)
+```
+
+```{r}
+# Train the GBM model with cross-validation
 set.seed(123)
-gbm_model <- gbm(
+gbm_tuned_model <- train(
   label ~ .,                         # Formula for Gradient Boosting
   data = GBtrain_data_pca,           # PCA-transformed training data
-  distribution = "bernoulli",        # Binary classification
-  n.trees = 100,                     # Number of trees
-  interaction.depth = 3,             # Tree depth
-  shrinkage = 0.05,                  # Learning rate
-  n.minobsinnode = 10,               # Minimum observations in terminal nodes
-  cv.folds = 5,                      # Cross-validation folds
+  method = "gbm",                    # Gradient Boosting Machine
+  trControl = GBcontrol,               # Cross-validation settings
+  tuneGrid = GBtune_grid,              # Hyperparameter grid
+  metric = "ROC",                    # Metric to optimize (ROC is suitable for classification)
   verbose = FALSE                    # Suppress output
 )
 ```
 
-```{r}
-# Determine the optimal number of trees
-best_trees <- gbm.perf(gbm_model, method = "cv")
-cat("Optimal number of trees:", best_trees, "\n")
-```
 
 ```{r}
-# Predict probabilities on the test data
-gbm_predictions <- predict(
-  gbm_model,
-  newdata = GBtest_data_pca,
-  n.trees = best_trees,
-  type = "response"
-)
-```
+# Print the best tuning parameters
+print(gbm_tuned_model$bestTune)
 
-```{r}
-# Convert probabilities to binary predictions
-threshold <- 0.5  # Default threshold
-predicted_classes <- ifelse(gbm_predictions > threshold, 1, 0)
-predicted_classes <- factor(predicted_classes, levels = c(0, 1))
+# Use the best model to predict on the test set
+gbm_predictions <- predict(gbm_tuned_model, newdata = GBtest_data_pca)
 ```
 
 ```{r}
 # Confusion matrix and performance metrics
-conf_matrix <- table(Predicted = predicted_classes, Actual = GBtest_data_pca$label)
-TP <- conf_matrix[2, 2]
-TN <- conf_matrix[1, 1]
-FP <- conf_matrix[1, 2]
-FN <- conf_matrix[2, 1]
+conf_matrix <- confusionMatrix(gbm_predictions, GBtest_data_pca$label)
 
-# Calculate sensitivity, specificity, and balanced accuracy
+# Print the confusion matrix and balanced accuracy
+print(conf_matrix)
+```
+
+```{r}
+# Calculate Balanced Accuracy manually from confusion matrix
+TP <- conf_matrix$table[2, 2]  # True Positives
+TN <- conf_matrix$table[1, 1]  # True Negatives
+FP <- conf_matrix$table[1, 2]  # False Positives
+FN <- conf_matrix$table[2, 1]  # False Negatives
+
 sensitivity <- TP / (TP + FN)
 specificity <- TN / (TN + FP)
-balanced_accuracy <- (sensitivity + specificity) / 2
+GBbalanced_accuracy <- (sensitivity + specificity) / 2
 
-cat("Balanced Accuracy:", balanced_accuracy, "\n")
+cat("Balanced Accuracy:", GBbalanced_accuracy, "\n")
 ```
 
