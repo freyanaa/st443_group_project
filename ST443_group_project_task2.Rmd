@@ -390,3 +390,149 @@ for (i in seq_along(lambda_grid)) {
   test_errors[i] <- mean((predictions - test_Y)^2)
 }
 ```
+
+
+### Gradient Boosting Feature Selection 
+
+```{r}
+# Load required libraries
+library(caret)       # For training and evaluation
+library(glmnet)      # For Lasso and Ridge regression
+library(gbm)         # For Gradient Boosting
+library(dplyr)       # For data manipulation
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data into training and testing sets (80-20 split)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+GBtrain_data <- MLData_Task2[train_indices, ]
+GBtest_data <- MLData_Task2[-train_indices, ]
+
+# Check the dimensions
+cat("Training data dimensions:", dim(GBtrain_data), "\n")
+cat("Testing data dimensions:", dim(GBtest_data), "\n")
+```
+
+```{r}
+# Separate features and labels
+GBtrain_X <- as.matrix(GBtrain_data[, -ncol(GBtrain_data)])  # Exclude label column
+GBtrain_Y <- factor(GBtrain_data$label)                     # Convert to factor
+GBtest_X <- as.matrix(GBtest_data[, -ncol(GBtest_data)])    # Exclude label column
+GBtest_Y <- factor(GBtest_data$label)                      # Convert to factor
+```
+
+```{r}
+# Check the dimensions and class balance
+cat("Training features dimensions:", dim(GBtrain_X), "\n")
+cat("Testing features dimensions:", dim(GBtest_X), "\n")
+cat("Training class distribution:\n")
+print(table(GBtrain_Y))
+cat("Testing class distribution:\n")
+print(table(GBtest_Y))
+```
+
+
+```{r}
+# Remove zero-variance columns
+zero_var_cols <- nearZeroVar(GBtrain_X, saveMetrics = TRUE)$nzv
+GBtrain_X <- GBtrain_X[, !zero_var_cols]
+GBtest_X <- GBtest_X[, !zero_var_cols]
+```
+
+```{r}
+# Verify dimensions after removing zero-variance columns
+cat("Training data dimensions after zero-variance removal:", dim(GBtrain_X), "\n")
+cat("Test data dimensions after zero-variance removal:", dim(GBtest_X), "\n")
+```
+
+```{r}
+# Applying PCA to reduce dimensions
+set.seed(123)
+pca_model <- prcomp(GBtrain_X, scale. = TRUE)
+
+# Retaining components explaining 95% of variance
+explained_variance <- cumsum(pca_model$sdev^2) / sum(pca_model$sdev^2)
+num_components <- which(explained_variance >= 0.95)[1]
+cat("Number of components explaining 95% variance:", num_components, "\n")
+
+# Transforming training and test data using PCA
+GBtrain_X_pca <- pca_model$x[, 1:num_components]
+GBtest_X_pca <- predict(pca_model, newdata = GBtest_X)[, 1:num_components]
+
+# Verifying PCA-transformed dimensions
+cat("Training data PCA-transformed dimensions:", dim(GBtrain_X_pca), "\n")
+cat("Test data PCA-transformed dimensions:", dim(GBtest_X_pca), "\n")
+```
+
+```{r}
+#labels are numeric (0, 1) for binary classification
+GBtrain_data_pca <- data.frame(GBtrain_X_pca, label = GBtrain_Y)
+GBtest_data_pca <- data.frame(GBtest_X_pca, label = GBtest_Y)
+
+# Converting labels to numeric (0, 1)
+GBtrain_data_pca$label <- as.numeric(GBtrain_data_pca$label) - 1  # Convert factor to {0, 1}
+GBtest_data_pca$label <- as.numeric(GBtest_data_pca$label) - 1    # Convert factor to {0, 1}
+
+# Check 
+cat("Unique values in training labels after conversion:", unique(GBtrain_data_pca$label), "\n")
+cat("Unique values in test labels after conversion:", unique(GBtest_data_pca$label), "\n")
+```
+
+```{r}
+# Training GBM model on PCA-reduced data
+set.seed(123)
+gbm_model <- gbm(
+  label ~ .,                         # Formula for Gradient Boosting
+  data = GBtrain_data_pca,           # PCA-transformed training data
+  distribution = "bernoulli",        # Binary classification
+  n.trees = 100,                     # Number of trees
+  interaction.depth = 3,             # Tree depth
+  shrinkage = 0.05,                  # Learning rate
+  n.minobsinnode = 10,               # Minimum observations in terminal nodes
+  cv.folds = 5,                      # Cross-validation folds
+  verbose = FALSE                    # Suppress output
+)
+```
+
+```{r}
+# Determine the optimal number of trees
+best_trees <- gbm.perf(gbm_model, method = "cv")
+cat("Optimal number of trees:", best_trees, "\n")
+```
+
+```{r}
+# Predict probabilities on the test data
+gbm_predictions <- predict(
+  gbm_model,
+  newdata = GBtest_data_pca,
+  n.trees = best_trees,
+  type = "response"
+)
+```
+
+```{r}
+# Convert probabilities to binary predictions
+threshold <- 0.5  # Default threshold
+predicted_classes <- ifelse(gbm_predictions > threshold, 1, 0)
+predicted_classes <- factor(predicted_classes, levels = c(0, 1))
+```
+
+```{r}
+# Confusion matrix and performance metrics
+conf_matrix <- table(Predicted = predicted_classes, Actual = GBtest_data_pca$label)
+TP <- conf_matrix[2, 2]
+TN <- conf_matrix[1, 1]
+FP <- conf_matrix[1, 2]
+FN <- conf_matrix[2, 1]
+
+# Calculate sensitivity, specificity, and balanced accuracy
+sensitivity <- TP / (TP + FN)
+specificity <- TN / (TN + FP)
+balanced_accuracy <- (sensitivity + specificity) / 2
+
+cat("Balanced Accuracy:", balanced_accuracy, "\n")
+```
+
