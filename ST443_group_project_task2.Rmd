@@ -11,24 +11,65 @@ editor_options:
 
 ## Introduction
 
-### Data Preparation and split into Train and Test Data
+The aim of task 2 is to select properties of a molecule in a compound or random probe determine whether a compound binds to a target site on thrombin. This knowledge is required to design new compounds that can be used in drugs.
+
+## T1.1 Data Preparation and Summary Statistics
 
 ```{r}
+# Load all libraries required to execute the code in this notebook
 library(ggplot2)
 library(dplyr)
 library(caret)
-library(glmnet)
-library(pROC)
+library(glmnet) # To run lasso logistic regression
+library(pROC) # To plot ROC curve
+library(yardstick) # To calculate balanced accuracy
 ```
 
 ```{r}
+# Load and view the data
 MLData_Task2 <- read.csv("data2.csv.gz", header=TRUE)
 View(MLData_Task2)
 ```
 
+#### Dataset-level statistics
+
 ```{r}
+# Check for any missing valus in the dataset
 any(is.na(MLData_Task2))
 ```
+
+```{r}
+# Calculate the Feature-Row ratio
+cat("Number of features:", ncol(MLData_Task2), "\n")
+cat("Number of samples:", nrow(MLData_Task2), "\n")
+cat("Feature-to-sample ratio:", ncol(MLData_Task2) / nrow(MLData_Task2), "\n")
+```
+
+```{r}
+# Check if the dataset is balanced, i.e. if the frequency of each class is approx. the same
+table(MLData_Task2$label)
+```
+
+We can see that the data is heavily imbalanced - it contains much more observations of class -1 than of class 1.
+
+```{r}
+# Calculate the overall sparsity of the dataset (proportion of zeros in the dataset)
+sum(MLData_Task2 == 0) / (nrow(MLData_Task2) * ncol(MLData_Task2))
+```
+
+As we can see, the dataset is very sparse.
+
+#### Feature-level Statistics
+
+```{r}
+# Variance-Based Feature Selection
+feature_variances <- apply(MLData_Task2, 2, var)
+cat("Proportion of low-variance features (< 0.01):", mean(feature_variances < 0.01), "\n")
+```
+
+## T2.2 Training and Evaluation of Feature Selection methods
+
+### Split data into Train and Test data
 
 ```{r}
 # Random split (80% training, 20% testing)
@@ -51,14 +92,6 @@ test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))  # Conve
 cat("Training set size:", nrow(train2_data), "\n")
 cat("Test set size:", nrow(test2_data), "\n")
 ```
-
-```{r}
-# Count the number of each class to see whether the dataset is balanced
-table(train_Y)
-table(test_Y)
-```
-
-We can see that the data is heavily imbalanced - it contains much more observations of class 0 than of class 1.
 
 ### Lasso with Logistic Regression
 
@@ -120,30 +153,18 @@ print(conf_matrix_lasso)
 # Extract the confusion matrix table
 conf_matrix_table <- conf_matrix_lasso$table
 conf_matrix_table
-
-# True positives and false negatives
-TP <- sum(lasso_predictions == 0 & test_Y == 0)
-FP <- sum(lasso_predictions == 0 & test_Y == 1)
-TN <- sum(lasso_predictions == 1 & test_Y == 1)
-FN <- sum(lasso_predictions == 1 & test_Y == 0)
 ```
 
 ```{r}
-#calculating Sensitivity (Recall) for Positive and Negative Classes
-sensitivity_positive <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))  # Sensitivity for Positive class (0)
-sensitivity_negative <- ifelse((TN + FP) == 0, NA, TN / (TN + FP))  # Sensitivity for Negative class (1)
-```
+# Create dataframe with predictions and actual values to calculate balanced accuracy
+data_lasso <- data.frame(
+  actual_data = factor(test_Y, levels = c(0, 1)),
+  prediction = factor(lasso_predictions, levels = c(0, 1))
+)
 
-```{r}
-# Handling NaN or NA values in sensitivities
-sensitivity_positive <- ifelse(is.na(sensitivity_positive), 0, sensitivity_positive)
-sensitivity_negative <- ifelse(is.na(sensitivity_negative), 0, sensitivity_negative)
-```
-
-```{r}
-# Calculating Balanced Accuracy
-balanced_accuracy <- (sensitivity_positive + sensitivity_negative) / 2
-cat("Balanced Accuracy:", balanced_accuracy, "\n")
+# Calculate balanced accuracy
+balanced_acc <- bal_accuracy(data_lasso, truth = actual_data, estimate = prediction)
+print(balanced_acc)
 ```
 
 #### Random Forest for Feature Selection
@@ -153,31 +174,49 @@ library(randomForest)
 library(caret)
 ```
 
-For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, this would mean m = sqrt(100,000) = \~316, which is way to computationally expensive. Thus we will apply a pre-selection of features by removing those features with a variance below 0.01 - given the low variance these features will in no case serve as good predictors for our classification task.
+For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, this would mean m = sqrt(100,000) = \~316, which is way to computationally expensive. Thus we will apply a pre-selection of features by removing those features with a variance below 0.01 - given the low variance, these features will in no case serve as good predictors for our classification task.
 
 ```{r}
 # Calculate the variance of each feature
-feature_variances <- apply(MLData_Task2[, -1], 2, var)
+feature_variances <- apply(train_X, 2, var)
 
 # Identify features with variance >= 0.01
 selected_features <- which(feature_variances >= 0.01)
 
-# Subset the dataset to keep only selected features
-filtered_dataset <- MLData_Task2[, selected_features]
-
 # Print the number of features removed
-cat("Number of features removed:", ncol(MLData_Task2) - length(selected_features), "\n")
+cat("Number of features removed:", ncol(train_X) - length(selected_features), "\n")
 cat("Number of features retained:", length(selected_features), "\n")
 ```
 
-sqrt(30,121) still leaves \~173 features to be considered at each split. This is still too computationally expensive, thus we will try for 2, 5 and 10.
+sqrt(30,121) still leaves \~173 features to be considered at each split. This is still too computationally expensive, thus we will try m= 2, 5 and 10 and choose the model with the best performance.
 
 ```{r}
 # Define the hyperparameter grid for tuning
 tune_grid <- expand.grid(
-  mtry = c(2, 5, 10)  # Number of features considered at each split
+  mtry = c(2, 5, 10)  # Number of features considered as candidates each time the tree is splitt
 )
 ```
+
+We will use the balanced accuracy as our performance metric, because the dataset is highly imbalanced.
+
+```{r}
+# Write balanced accuracy as a function that can be accessed by trainControl
+calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
+  confusion_matrix <- table(data$obs, data$pred)
+  TP <- confusion_matrix[2, 2]
+  FN <- confusion_matrix[2, 1]
+  TN <- confusion_matrix[1, 1]
+  FP <- confusion_matrix[1, 2]
+
+  sensitivity <- TP / (TP + FN)  # True Positive Rate
+  specificity <- TN / (TN + FP)  # True Negative Rate
+  balanced_acc <- (sensitivity + specificity) / 2
+
+  return(c(BalancedAccuracy = balanced_acc))
+}
+```
+
+We are using a 5-fold Cross-validation to find the optimal split nodes and values.
 
 ```{r}
 # Set up cross-validation
@@ -185,13 +224,16 @@ control <- trainControl(
   method = "cv",            # Cross-validation
   number = 5,               # 5-fold CV
   verboseIter = TRUE,       # Print progress
-  savePredictions = "final" # Save predictions
+  savePredictions = "final", # Save predictions
+  summaryFunction = calculate_balanced_accuracy
 )
 ```
 
+We are training the model on our training dataset that only contains the selected features (variance \> 0.01). We set the number of trees to be created to 200.
+
 ```{r}
-# Create new training and test data set with only selected features
-train_X = train_x[, selected_features]
+# Create new training data set with only selected features
+train_X <- train_X[, selected_features]
 
 # Train the model
 set.seed(42)
@@ -199,10 +241,11 @@ rf_tuned_model <- train(
   x = train_X,
   y = train_Y,
   method = "rf",
-  metric = "Accuracy",      # Metric to optimize
+  metric = "BalancedAccuracy",      # Metric to optimize
   tuneGrid = tune_grid,     # Hyperparameter grid
   trControl = control,
-  ntree = 200               # Number of trees
+  ntree = 200,             # Number of trees
+  nodesize = 10
 )
 
 # Display the best parameters
@@ -210,31 +253,69 @@ print(rf_tuned_model$bestTune)
 ```
 
 ```{r}
-# Predictting on test set
-rf_predictions <- predict(rf_tuned_model, newdata = RFtest_X)
+# Predicting on test set
+test_X <- test_X[, selected_features]
+rf_predictions <- predict(rf_tuned_model, newdata = test_X)
 ```
 
 ```{r}
 # Confusion matrix
-conf_matrix_rf <- confusionMatrix(rf_predictions, RFtest_Y)
+conf_matrix_rf <- confusionMatrix(rf_predictions, test_Y)
 
 # Display confusion matrix
 print(conf_matrix_rf)
 ```
 
 ```{r}
-# Calculate Balanced Accuracy
-TP <- conf_matrix_rf$table[2, 2]  # True Positives
-TN <- conf_matrix_rf$table[1, 1]  # True Negatives
-FP <- conf_matrix_rf$table[1, 2]  # False Positives
-FN <- conf_matrix_rf$table[2, 1]  # False Negatives
+# Create dataframe with predictions and actual values to calculate balanced accuracy
+data_rf <- data.frame(
+  actual_data = factor(test_Y, levels = c(0, 1)),
+  prediction = factor(rf_predictions, levels = c(0, 1))
+)
 
-# Avoiding division by zero
-sensitivity <- ifelse((TP + FN) > 0, TP / (TP + FN), 0)
-specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), 0)
+# Calculate balanced accuracy
+balanced_acc <- bal_accuracy(data_rf, truth = actual_data, estimate = prediction)
+print(balanced_acc)
+```
 
-# Calculating Balanced Accuracy
-balanced_accuracy <- (sensitivity + specificity) / 2
+#### Recursive Feature Elimination with Gradient Boosting Machine
 
-cat("Balanced Accuracy:", balanced_accuracy, "\n")
+```{r}
+library (gbm)
+
+# Create training and testing datasets
+train_data <- MLData_Task2[train_indices, ]
+test_data <- MLData_Task2[-train_indices, ]
+
+# Define the number of trees
+n_trees = 100
+
+# Define grid of lambda (shrinkage) values to evaluate
+lambda_grid <- c(0.001,0.01,0.1)
+
+# Initialize a vector to store test errors for each lambda
+test_errors <- numeric(length(lambda_grid))
+```
+
+```{r}
+# Loop over each lambda value
+for (i in seq_along(lambda_grid)) {
+  lambda <- lambda_grid[i]
+  
+  # Train the gbm model with the current lambda (shrinkage) value
+  gbm_model <- gbm(formula = train_data$label ~ ., 
+                   data = train_data[, -1],
+                   distribution = "bernoulli", 
+                   n.trees = num_trees, 
+                   interaction.depth = 5, 
+                   shrinkage = lambda, 
+                   cv.folds = 5, 
+                   verbose = TRUE)
+  
+  # Make predictions on the test set using the optimal number of trees
+  predictions <- predict(gbm_model, newdata = test_X, n.trees = num_trees)
+  
+  # Calculate the Mean Squared Error on the test set
+  test_errors[i] <- mean((predictions - test_Y)^2)
+}
 ```
