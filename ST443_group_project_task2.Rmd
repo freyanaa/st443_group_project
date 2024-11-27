@@ -631,20 +631,35 @@ svm_predictions <- predict(svm_model, test_data_factor[,-1])
 
 ```{r}
 library(xgboost)
+# Random split (80% training, 20% testing)
+set.seed(123)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
 
-# Convert data to DMatrix
-dtrain <- xgb.DMatrix(data = as.matrix(train_X), label = train_Y)
+# Create training and testing datasets
+train2_data <- MLData_Task2[train_indices, ]
+test2_data <- MLData_Task2[-train_indices, ]
 
-# Train an XGBoost model
+# Prepare data for XGBoost
+train_matrix <- xgb.DMatrix(data = as.matrix(train2_data[,-1]), label = train2_data$label)
+test_matrix <- xgb.DMatrix(data = as.matrix(test2_data[,-1]), label = test2_data$label)
+```
+
+```{r}
+lambda <- 0.1
+```
+
+```{r}
+# Train the XGBoost model with the chosen learning rate
 xgb_model <- xgboost(
-  data = dtrain,
-  objective = "binary:logistic",
-  nrounds = 100,
-  max_depth = 3,
-  eta = 0.1
+  data = train_matrix,
+  eta = lambda,
+  max_depth = 4,
+  nrounds = 5000,
+  objective = "reg:squarederror",
+  verbose = 0,
+  early_stopping_rounds = 10,
 )
 
 # Feature importance
 xgb.importance(model = xgb_model)
-Conclusion
 ```
