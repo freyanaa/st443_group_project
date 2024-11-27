@@ -28,7 +28,7 @@ library(yardstick) # To calculate balanced accuracy
 ```{r}
 # Load and view the data
 MLData_Task2 <- read.csv("data2.csv.gz", header=TRUE)
-View(MLData_Task2)
+#View(MLData_Task2)
 ```
 
 #### Dataset-level statistics
@@ -85,8 +85,8 @@ test2_data <- MLData_Task2[-train_indices, ]
 # Prepare data
 train_X <- as.matrix(train2_data[, -1])  # Exclude label column
 test_X <- as.matrix(test2_data[, -1])  # Exclude label column
-train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))  # Convert to 0 and 1
-test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))  # Convert to 0 and 1
+train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))
+test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
 
 # Verify split
 cat("Training set size:", nrow(train2_data), "\n")
@@ -141,10 +141,9 @@ calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
 Because of the high imbalance in classes in our dataset, we will assign weights according to the share of the different classes in the dataset and pass these to our model.
 
 ```{r}
-train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
-class_weights <- ifelse(train_Y == "Class1",
-                        1 / sum(train_Y == "Class1"),
-                        1 / sum(train_Y == "Class0"))
+class_weights <- ifelse(train_Y == 1,
+                        1 / sum(train_Y == 1),
+                        1 / sum(train_Y == 0))
 ```
 
 We will perform a 5-fold cross validation on the data using the train control function and balanced accuracy as the metric for evaluation to find the best value for the penalty coefficient lambda.
@@ -169,6 +168,9 @@ lambda_grid <- expand.grid(
 ```
 
 ```{r}
+train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
+test_Y <- factor(test_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
+
 # Train LASSO model
 set.seed(42)
 lasso_model <- train(
@@ -189,6 +191,15 @@ print(lasso_model$bestTune)
 ```
 
 ```{r}
+# Extract coefficients for the best lambda
+coefficients <- coef(lasso_model$finalModel, s = best_lambda)
+
+# Count non-zero coefficients (excluding the intercept)
+non_zero_count <- sum(coefficients != 0) - 1  # Subtract 1 for the intercept
+cat("Number of non-zero coefficients:", non_zero_count, "\n")
+```
+
+```{r}
 # View results
 print(lasso_model$results)
 
@@ -196,56 +207,73 @@ print(lasso_model$results)
 plot(lasso_model)
 ```
 
-Predict the probabilities on the test data
-
 ```{r}
-# Predict probabilities for the test set
-lasso_probs <- predict(lasso_model, newdata = test_X, type = "prob", s=best_lambda)
+# Extract all lambda values from the model
+lambda_values <- lasso_model$finalModel$lambda
 
-# Extract probabilities for the positive class
-lasso_probs <- lasso_probs[, "Class1"]
-```
+# Initialize a vector to store the number of non-zero coefficients
+num_features <- numeric(length(lambda_values))
 
-Now we convert the predicted probabilities into the class labels at the optimal threshold.
+# Loop through each lambda and count non-zero coefficients
+for (i in seq_along(lambda_values)) {
+  coefficients <- coef(lasso_model$finalModel, s = lambda_values[i])
+  num_features[i] <- sum(coefficients != 0) - 1  # Subtract 1 for the intercept
+}
 
-```{r}
-# Convert probabilities to class labels at optimal threshold
-lasso_predictions <- ifelse(lasso_probs > best_lambda, 0, 1) 
-lasso_predictions <- factor(lasso_predictions, levels = levels(test_Y))
-```
-
-Assessment of our model:
-
-```{r}
-# Compute confusion matrix
-conf_matrix_lasso <- confusionMatrix(lasso_predictions, test_Y)
-print(conf_matrix_lasso)
-
-# Extract the confusion matrix table
-conf_matrix_table <- conf_matrix_lasso$table
-conf_matrix_table
-```
-
-```{r}
-# Create dataframe with predictions and actual values to calculate balanced accuracy
-data_lasso <- data.frame(
-  actual_data = factor(test_Y, levels = c(0, 1)),
-  prediction = factor(lasso_predictions, levels = c(0, 1))
+# Plot the results
+plot(
+  log10(lambda_values), num_features, type = "b",
+  xlab = "Log10(Lambda)", ylab = "Number of Selected Features",
+  main = "Number of Selected Features vs. Lambda"
 )
+```
+
+```{r}
+# Predict probabilities on the test data
+lasso_probs <- predict(lasso_model, newdata = test_X, type = "prob")
+
+# Convert probabilities to class predictions using a threshold (e.g., 0.5)
+lasso_preds <- ifelse(lasso_probs[, "Class1"] > 0.4, "Class1", "Class0")
+
+# Ensure predictions are factors with the same levels as test_Y
+lasso_preds <- factor(lasso_preds, levels = levels(test_Y))
 
 # Calculate balanced accuracy
-balanced_acc <- bal_accuracy(data_lasso, truth = actual_data, estimate = prediction)
-print(balanced_acc)
+confusion_matrix <- table(test_Y, lasso_preds)
+
+sensitivity <- confusion_matrix[2, 2] / (confusion_matrix[2, 2] + confusion_matrix[2, 1])  # True Positive Rate
+specificity <- confusion_matrix[1, 1] / (confusion_matrix[1, 1] + confusion_matrix[1, 2])  # True Negative Rate
+balanced_accuracy <- (sensitivity + specificity) / 2
+
+cat("Balanced Accuracy on Test Data:", balanced_accuracy, "\n")
 ```
 
-#### Random Forest for Feature Selection
+### Random Forest for Feature Selection
 
 ```{r}
 library(randomForest)
 library(caret)
+
+# Random split (80% training, 20% testing)
+set.seed(123)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+
+# Create training and testing datasets
+train2_data <- MLData_Task2[train_indices, ]
+test2_data <- MLData_Task2[-train_indices, ]
+
+# Prepare data
+train_X <- as.matrix(train2_data[, -1])  # Exclude label column
+test_X <- as.matrix(test2_data[, -1])  # Exclude label column
+train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))
+test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
+
+# Verify split
+cat("Training set size:", nrow(train2_data), "\n")
+cat("Test set size:", nrow(test2_data), "\n")
 ```
 
-For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, this would mean m = sqrt(100,000) = \~316, which is way to computationally expensive. Thus we will apply a pre-selection of features by removing those features with a variance below 0.01 - given the low variance, these features will in no case serve as good predictors for our classification task.
+For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, after the pre-selection this would mean m = sqrt(100,000) = \~316, which is way to computationally expensive. Thus we will apply a pre-selection of features by removing those features with a variance below 0.01 - given the low variance, these features will in no case serve as good predictors for our classification task.
 
 ```{r}
 # Calculate the variance of each feature
@@ -257,14 +285,18 @@ selected_features <- which(feature_variances >= 0.01)
 # Print the number of features removed
 cat("Number of features removed:", ncol(train_X) - length(selected_features), "\n")
 cat("Number of features retained:", length(selected_features), "\n")
+
+# Apply on training and test dataset
+train_X <- train_X[, selected_features]
+test_X <- test_X[, selected_features]
 ```
 
-sqrt(30,121) still leaves \~173 features to be considered at each split. This is still too computationally expensive, thus we will try m= 2, 5 and 10 and choose the model with the best performance.
+sqrt(31,269) still leaves \~173 features to be considered at each split.
 
 ```{r}
 # Define the hyperparameter grid for tuning
 tune_grid <- expand.grid(
-  mtry = c(2, 5, 10)  # Number of features considered as candidates each time the tree is splitt
+  mtry = c(173)  # Number of features considered as candidates each time the tree is split
 )
 ```
 
@@ -300,11 +332,11 @@ control <- trainControl(
 )
 ```
 
-We are training the model on our training dataset that only contains the selected features (variance \> 0.01). We set the number of trees to be created to 200.
+We are training the model on our training dataset that only contains the selected features (variance \> 0.01). We set the number of trees to be created to 100.
 
 ```{r}
-# Create new training data set with only selected features
-train_X <- train_X[, selected_features]
+train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
+test_Y <- factor(test_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
 
 # Train the model
 set.seed(42)
@@ -316,7 +348,8 @@ rf_tuned_model <- train(
   tuneGrid = tune_grid,     # Hyperparameter grid
   trControl = control,
   ntree = 200,             # Number of trees
-  nodesize = 10
+  nodesize = 10,
+  importance = TRUE
 )
 
 # Display the best parameters
@@ -324,8 +357,21 @@ print(rf_tuned_model$bestTune)
 ```
 
 ```{r}
+# Extract the final random forest model
+rf_model <- rf_tuned_model$finalModel
+
+# Use the randomForest importance function
+feature_importance <- randomForest::importance(rf_model)
+
+# Get features with non-zero importance
+selected_features <- rownames(feature_importance)[apply(feature_importance, 1, function(x) any(x > 0))]
+
+# Print selected features
+print(length(selected_features))
+```
+
+```{r}
 # Predicting on test set
-test_X <- test_X[, selected_features]
 rf_predictions <- predict(rf_tuned_model, newdata = test_X)
 ```
 
@@ -335,18 +381,6 @@ conf_matrix_rf <- confusionMatrix(rf_predictions, test_Y)
 
 # Display confusion matrix
 print(conf_matrix_rf)
-```
-
-```{r}
-# Create dataframe with predictions and actual values to calculate balanced accuracy
-data_rf <- data.frame(
-  actual_data = factor(test_Y, levels = c(0, 1)),
-  prediction = factor(rf_predictions, levels = c(0, 1))
-)
-
-# Calculate balanced accuracy
-balanced_acc <- bal_accuracy(data_rf, truth = actual_data, estimate = prediction)
-print(balanced_acc)
 ```
 
 #### Recursive Feature Elimination with Gradient Boosting Machine
@@ -391,8 +425,7 @@ for (i in seq_along(lambda_grid)) {
 }
 ```
 
-
-### Gradient Boosting Feature Selection 
+### Gradient Boosting Feature Selection
 
 ```{r}
 # Load required libraries
@@ -433,7 +466,6 @@ print(table(GBtrain_Y))
 cat("Testing class distribution:\n")
 print(table(GBtest_Y))
 ```
-
 
 ```{r}
 # Remove zero-variance columns
@@ -533,7 +565,6 @@ gbm_tuned_model <- train(
   verbose = FALSE                    # Suppress output
 )
 ```
-
 
 ```{r}
 # Print the best tuning parameters
@@ -696,3 +727,70 @@ GBbalanced_accuracy <- (sensitivity + specificity) / 2
 cat("Balanced Accuracy:", GBbalanced_accuracy, "\n")
 ```
 
+### SVM with recursive feature elimination
+
+```{r}
+#Packages
+library(e1071)
+```
+
+```{r}
+# Random split (80% training, 20% testing)
+set.seed(123)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+
+# Create training and testing datasets
+train2_data <- MLData_Task2[train_indices, ]
+test2_data <- MLData_Task2[-train_indices, ]
+
+# Prepare data
+train_X <- as.matrix(train2_data[, -1])  # Exclude label column
+test_X <- as.matrix(test2_data[, -1])  # Exclude label column
+train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))
+test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
+
+# Verify split
+cat("Training set size:", nrow(train2_data), "\n")
+cat("Test set size:", nrow(test2_data), "\n")
+
+#Model
+svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear")
+svm_predictions <- predict(svm_model, test_data_factor[,-1])
+```
+
+### XGBoost
+
+```{r}
+library(xgboost)
+# Random split (80% training, 20% testing)
+set.seed(123)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+
+# Create training and testing datasets
+train2_data <- MLData_Task2[train_indices, ]
+test2_data <- MLData_Task2[-train_indices, ]
+
+# Prepare data for XGBoost
+train_matrix <- xgb.DMatrix(data = as.matrix(train2_data[,-1]), label = train2_data$label)
+test_matrix <- xgb.DMatrix(data = as.matrix(test2_data[,-1]), label = test2_data$label)
+```
+
+```{r}
+lambda <- 0.1
+```
+
+```{r}
+# Train the XGBoost model with the chosen learning rate
+xgb_model <- xgboost(
+  data = train_matrix,
+  eta = lambda,
+  max_depth = 4,
+  nrounds = 5000,
+  objective = "reg:squarederror",
+  verbose = 0,
+  early_stopping_rounds = 10,
+)
+
+# Feature importance
+xgb.importance(model = xgb_model)
+```
