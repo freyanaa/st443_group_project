@@ -565,3 +565,134 @@ GBbalanced_accuracy <- (sensitivity + specificity) / 2
 cat("Balanced Accuracy:", GBbalanced_accuracy, "\n")
 ```
 
+#### GB2 Variance threshold 0.01
+
+```{r}
+# Load required libraries
+library(caret)       # For training and evaluation
+library(glmnet)      # For Lasso and Ridge regression
+library(gbm)         # For Gradient Boosting
+library(dplyr)       # For data manipulation
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data into training and testing sets (80-20 split)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+GBtrain_data <- MLData_Task2[train_indices, ]
+GBtest_data <- MLData_Task2[-train_indices, ]
+
+# Check the dimensions
+cat("Training data dimensions:", dim(GBtrain_data), "\n")
+cat("Testing data dimensions:", dim(GBtest_data), "\n")
+```
+
+```{r}
+# Separate features and labels
+GBtrain_X <- as.matrix(GBtrain_data[, -ncol(GBtrain_data)])  # Exclude label column
+GBtrain_Y <- factor(GBtrain_data$label)                     # Convert to factor
+GBtest_X <- as.matrix(GBtest_data[, -ncol(GBtest_data)])    # Exclude label column
+GBtest_Y <- factor(GBtest_data$label)                      # Convert to factor
+```
+
+```{r}
+# Check the dimensions and class balance
+cat("Training features dimensions:", dim(GBtrain_X), "\n")
+cat("Testing features dimensions:", dim(GBtest_X), "\n")
+cat("Training class distribution:\n")
+print(table(GBtrain_Y))
+cat("Testing class distribution:\n")
+print(table(GBtest_Y))
+```
+
+```{r}
+# Step 3: Calculate variance of each feature (excluding the label column)
+feature_variances <- apply(GBtrain_data[, -1], 2, var)
+
+# Step 4: Define a threshold for variance
+variance_threshold <- 0.01  # Adjust this value as needed
+
+# Step 5: Select features with variance above the threshold
+selected_features <- names(feature_variances[feature_variances > variance_threshold])
+```
+
+```{r}
+# Step 6: Subset the training and testing data to only include selected features
+GBtrain_data_filtered <- GBtrain_data[, c(selected_features, "label")]
+GBtest_data_filtered <- GBtest_data[, c(selected_features, "label")]
+
+# Print the number of selected features
+cat("Number of features selected after applying variance threshold:", length(selected_features), "\n")
+```
+
+```{r}
+# Step 7: Set up cross-validation and hyperparameter tuning
+GBtrain_control <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+```
+
+```{r}
+#Defining a range of shrinkage values to try
+shrinkage_values <- c(0.01, 0.05, 0.1, 0.2)
+```
+
+```{r}
+# Creating a grid of parameters to search
+GBtune_grid <- expand.grid(
+  shrinkage = shrinkage_values,  # Learning rate
+  n.trees = 100,                 # Number of trees
+  interaction.depth = 3,         # Tree depth
+  n.minobsinnode = 10           # Minimum observations in terminal nodes
+)
+```
+
+```{r}
+# Train the GBM model with cross-validation
+set.seed(123)
+gbm_tuned_model <- train(
+  label ~ .,                         # Formula for Gradient Boosting
+  data = GBtrain_data_filtered,           # PCA-transformed training data
+  method = "gbm",                    # Gradient Boosting Machine
+  trControl = GBcontrol,               # Cross-validation settings
+  tuneGrid = GBtune_grid,              # Hyperparameter grid
+  metric = "ROC",                    # Metric to optimize (ROC is suitable for classification)
+  verbose = FALSE                    # Suppress output
+)
+```
+
+```{r}
+# Print the best tuning parameters
+print(gbm_tuned_model$bestTune)
+
+# Use the best model to predict on the test set
+gbm_predictions <- predict(gbm_tuned_model, newdata = GBtest_data_pca)
+```
+
+```{r}
+# Confusion matrix and performance metrics
+conf_matrix <- confusionMatrix(gbm_predictions, GBtest_data_pca$label)
+
+# Print the confusion matrix and balanced accuracy
+print(conf_matrix)
+```
+
+```{r}
+# Calculate Balanced Accuracy manually from confusion matrix
+TP <- conf_matrix$table[2, 2]  # True Positives
+TN <- conf_matrix$table[1, 1]  # True Negatives
+FP <- conf_matrix$table[1, 2]  # False Positives
+FN <- conf_matrix$table[2, 1]  # False Negatives
+
+sensitivity <- TP / (TP + FN)
+specificity <- TN / (TN + FP)
+GBbalanced_accuracy <- (sensitivity + specificity) / 2
+
+cat("Balanced Accuracy:", GBbalanced_accuracy, "\n")
+```
+
