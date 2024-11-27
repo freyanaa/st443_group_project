@@ -248,7 +248,7 @@ balanced_accuracy <- (sensitivity + specificity) / 2
 cat("Balanced Accuracy on Test Data:", balanced_accuracy, "\n")
 ```
 
-#### Random Forest for Feature Selection
+### Random Forest for Feature Selection
 
 ```{r}
 library(randomForest)
@@ -291,12 +291,12 @@ train_X <- train_X[, selected_features]
 test_X <- test_X[, selected_features]
 ```
 
-sqrt(31,269) still leaves \~173 features to be considered at each split. This is still too computationally expensive, thus we will try m= 2, 5 and 10 and choose the model with the best performance.
+sqrt(31,269) still leaves \~173 features to be considered at each split.
 
 ```{r}
 # Define the hyperparameter grid for tuning
 tune_grid <- expand.grid(
-  mtry = c(2, 5, 10)  # Number of features considered as candidates each time the tree is split
+  mtry = c(173)  # Number of features considered as candidates each time the tree is split
 )
 ```
 
@@ -332,9 +332,12 @@ control <- trainControl(
 )
 ```
 
-We are training the model on our training dataset that only contains the selected features (variance \> 0.01). We set the number of trees to be created to 200.
+We are training the model on our training dataset that only contains the selected features (variance \> 0.01). We set the number of trees to be created to 100.
 
 ```{r}
+train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
+test_Y <- factor(test_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
+
 # Train the model
 set.seed(42)
 rf_tuned_model <- train(
@@ -345,7 +348,8 @@ rf_tuned_model <- train(
   tuneGrid = tune_grid,     # Hyperparameter grid
   trControl = control,
   ntree = 200,             # Number of trees
-  nodesize = 10
+  nodesize = 10,
+  importance = TRUE
 )
 
 # Display the best parameters
@@ -353,8 +357,21 @@ print(rf_tuned_model$bestTune)
 ```
 
 ```{r}
+# Extract the final random forest model
+rf_model <- rf_tuned_model$finalModel
+
+# Use the randomForest importance function
+feature_importance <- randomForest::importance(rf_model)
+
+# Get features with non-zero importance
+selected_features <- rownames(feature_importance)[apply(feature_importance, 1, function(x) any(x > 0))]
+
+# Print selected features
+print(length(selected_features))
+```
+
+```{r}
 # Predicting on test set
-test_X <- test_X[, selected_features]
 rf_predictions <- predict(rf_tuned_model, newdata = test_X)
 ```
 
@@ -364,18 +381,6 @@ conf_matrix_rf <- confusionMatrix(rf_predictions, test_Y)
 
 # Display confusion matrix
 print(conf_matrix_rf)
-```
-
-```{r}
-# Create dataframe with predictions and actual values to calculate balanced accuracy
-data_rf <- data.frame(
-  actual_data = factor(test_Y, levels = c(0, 1)),
-  prediction = factor(rf_predictions, levels = c(0, 1))
-)
-
-# Calculate balanced accuracy
-balanced_acc <- bal_accuracy(data_rf, truth = actual_data, estimate = prediction)
-print(balanced_acc)
 ```
 
 #### Recursive Feature Elimination with Gradient Boosting Machine
@@ -589,4 +594,57 @@ specificity <- TN / (TN + FP)
 GBbalanced_accuracy <- (sensitivity + specificity) / 2
 
 cat("Balanced Accuracy:", GBbalanced_accuracy, "\n")
+```
+
+### SVM with recursive feature elimination
+
+```{r}
+#Packages
+library(e1071)
+```
+
+```{r}
+# Random split (80% training, 20% testing)
+set.seed(123)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+
+# Create training and testing datasets
+train2_data <- MLData_Task2[train_indices, ]
+test2_data <- MLData_Task2[-train_indices, ]
+
+# Prepare data
+train_X <- as.matrix(train2_data[, -1])  # Exclude label column
+test_X <- as.matrix(test2_data[, -1])  # Exclude label column
+train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))
+test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
+
+# Verify split
+cat("Training set size:", nrow(train2_data), "\n")
+cat("Test set size:", nrow(test2_data), "\n")
+
+#Model
+svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear")
+svm_predictions <- predict(svm_model, test_data_factor[,-1])
+```
+
+### XGBoost
+
+```{r}
+library(xgboost)
+
+# Convert data to DMatrix
+dtrain <- xgb.DMatrix(data = as.matrix(train_X), label = train_Y)
+
+# Train an XGBoost model
+xgb_model <- xgboost(
+  data = dtrain,
+  objective = "binary:logistic",
+  nrounds = 100,
+  max_depth = 3,
+  eta = 0.1
+)
+
+# Feature importance
+xgb.importance(model = xgb_model)
+Conclusion
 ```
