@@ -665,11 +665,10 @@ plot.roc(gbdt_roc_curve, main = "GBDT ROC Curve", col = "blue", lwd = 2)
 
 ```
 
-
-
-### PCA with 10 components ###
+### PCA with 10 components
 
 Split the data:
+
 ```{r}
 # Perform PCA on the training data (excluding the label column)
 pca <- prcomp(train_data1[, -1], scale. = TRUE)
@@ -679,8 +678,7 @@ train_pca <- data.frame(label = train_data1$label, pca$x[, 1:10])
 test_pca <- data.frame(label = test_data1$label, predict(pca, test_data1[, -1])[, 1:10])
 ```
 
-
-### LDA with PCA 
+### LDA with PCA
 
 ```{r}
 # Train the LDA model on the PCA-transformed training data
@@ -689,7 +687,6 @@ lda_pca_model <- lda(label ~ ., data = train_pca)
 # Print the LDA model summary
 summary(lda_pca_model)
 ```
-
 
 ```{r}
 # Make predictions on the PCA-transformed test data
@@ -706,7 +703,6 @@ cat("LDA PCA Test Error:", round(lda_pca_test_error, 3), "\n")
 
 ```
 
-
 ```{r}
 # Extract metrics from the confusion matrix
 accuracy_lda_pca <- conf_matrix_pca$overall['Accuracy']
@@ -718,8 +714,6 @@ cat("Accuracy (LDA with PCA):", accuracy_lda_pca, "\n")
 cat("Balanced Accuracy (LDA with PCA):", balanced_accuracy_lda_pca, "\n")
 cat("F1 Score (LDA with PCA):", f1_score_lda_pca, "\n")
 ```
-
-
 
 ```{r}
 # Calculate and plot the ROC curve
@@ -737,8 +731,6 @@ cat("F1 Score:", round(f1_score_lda_pca, 3), "\n")
 cat("AUC:", round(auc_pca, 3), "\n")
 ```
 
-
-
 ### Logistic classifier with PCA
 
 ```{r}
@@ -751,7 +743,6 @@ train_pca_log$label <- ifelse(train_pca_log$label == "TREG", 1, 0)
 test_pca_log$label <- ifelse(test_pca_log$label == "TREG", 1, 0)
 
 ```
-
 
 ```{r}
 # Train logistic regression on PCA-transformed data
@@ -775,7 +766,6 @@ cat("Test Error (Logistic with PCA):", round(logistic_pca_test_error, 3), "\n")
 
 ```
 
-
 ```{r}
 # Confusion matrix
 
@@ -794,7 +784,6 @@ cat("F1 Score (Logistic with PCA):", f1_score_logistic_pca, "\n")
 
 
 ```
-
 
 ```{r}
 # Calculate and plot the ROC curve
@@ -840,7 +829,6 @@ qda_pca_conf_matrix
 
 ```
 
-
 ```{r}
 # Extract metrics from the confusion matrix
 qda_pca_accuracy <- qda_pca_conf_matrix$overall['Accuracy']
@@ -853,7 +841,6 @@ cat("Balanced Accuracy (QDA with PCA):", qda_pca_balanced_accuracy, "\n")
 cat("F1 Score (QDA with PCA):", qda_pca_f1_score, "\n")
 
 ```
-
 
 ```{r}
 # Calculate the ROC curve
@@ -874,8 +861,7 @@ cat("AUC:", round(qda_pca_auc, 3), "\n")
 
 ```
 
-
-### Random Forest with PCA 
+### Random Forest with PCA
 
 ```{r}
 install.packages("randomForest")
@@ -893,7 +879,6 @@ rf_pca_model <- randomForest(label ~ ., data = train_pca, mtry = round(sqrt(p)),
 print(rf_pca_model)
 
 ```
-
 
 ```{r}
 # Predictions on the test data
@@ -941,7 +926,6 @@ cat("AUC:", round(auc_value_rf_pca, 3), "\n")
 
 ```
 
-
 ### K-NN with PCA
 
 ```{r}
@@ -955,7 +939,6 @@ test_Y_pca <- test_pca$label
 
 ```
 
-
 ```{r}
 # Train k-NN model with probabilities using caret's knn3
 k <- 5  # Set the value of k
@@ -968,10 +951,10 @@ knn_pca_predictions <- predict(knn_model_pca, test_X_pca, type = "class")
 ```
 
 # Reason we are using knn3 here:
+
 The knn function from the class package works for simple k-NN because it directly predicts class labels based on the nearest neighbors. However, when we apply PCA, we need class probabilities to compute metrics like AUC and plot the ROC curve. The knn function doesn't support probability predictions, which is why it doesn't work for k-NN with PCA when AUC is required.
 
 In contrast, knn3 from the caret package supports both class predictions and probability outputs, making it suitable for PCA-based k-NN with advanced metrics like AUC.
-
 
 ```{r}
 # Confusion matrix
@@ -998,7 +981,6 @@ cat("Balanced Accuracy (k-NN with PCA):", round(balanced_accuracy_knn_pca, 3), "
 cat("F1 Score (k-NN with PCA):", round(f1_score_knn_pca, 3), "\n")
 
 ```
-
 
 ```{r}
 # Convert labels to numeric for ROC calculation
@@ -1029,8 +1011,7 @@ cat("AUC:", round(auc_value_knn_pca, 3), "\n")
 
 ```
 
-
-### SVM with QDA 
+### SVM with QDA
 
 ```{r}
 # Train the SVM model on PCA-transformed data
@@ -1074,7 +1055,6 @@ cat("F1 Score (SVM with PCA):", round(f1_score_svm_pca, 3), "\n")
 
 ```
 
-
 ```{r}
 # Convert labels to numeric for ROC calculation
 test_Y_numeric_pca <- ifelse(test_pca$label == "TREG", 1, 0)
@@ -1091,7 +1071,6 @@ plot(roc_curve_svm_pca, col = "red", main = "ROC Curve for SVM with PCA")
 cat("AUC (SVM with PCA):", round(auc_value_svm_pca, 3), "\n")
 ```
 
-
 ```{r}
 cat("SVM with PCA Classifier Summary:\n")
 cat("Accuracy:", round(accuracy_svm_pca, 3), "\n")
@@ -1101,8 +1080,7 @@ cat("AUC:", round(auc_value_svm_pca, 3), "\n")
 
 ```
 
-
-### GBDT with PCA 
+### GBDT with PCA
 
 ```{r}
 
@@ -1151,7 +1129,6 @@ cat("Balanced Accuracy (GBDT with PCA):", round(gbdt_pca_balanced_accuracy, 3), 
 cat("F1 Score (GBDT with PCA):", round(gbdt_pca_f1_score, 3), "\n")
 ```
 
-
 ```{r}
 # Calculate and plot the ROC curve
 gbdt_pca_roc_curve <- roc(test_pca$label, gbdt_pca_predictions)
@@ -1162,7 +1139,6 @@ plot.roc(gbdt_pca_roc_curve, main = "GBDT ROC Curve with PCA", col = "red", lwd 
 cat("AUC (GBDT with PCA):", round(gbdt_pca_auc_value, 3), "\n")
 ```
 
-
 ```{r}
 cat("GBDT with PCA Classifier Summary:\n")
 cat("Accuracy:", round(gbdt_pca_accuracy, 3), "\n")
@@ -1171,7 +1147,5 @@ cat("F1 Score:", round(gbdt_pca_f1_score, 3), "\n")
 cat("AUC:", round(gbdt_pca_auc_value, 3), "\n")
 
 ```
-
-
 
 ## T1.3 Training and evaluation of classifiers
