@@ -222,6 +222,11 @@ We get that 66.17% of our entries are nullvalues, meaning that our data is very 
 library(MASS)
 library(caret)
 library(pROC)
+library(klaR)
+library(randomForest)
+library(class)
+library(e1071)
+library(gbm)
 
 # Set seed for reproducibility
 set.seed(123)  
@@ -354,9 +359,15 @@ cat("AUC:", round(auc_logistic, 3), "\n")
 ### Quadratic Discriminant Analysis (QDA)
 
 ```{r}
-library(klaR)
+
+test_data_factor <- test_data1
+train_data_factor <- train_data1
+
+test_data_factor$label <- factor(test_data_factor$label)
+train_data_factor$label <- factor(train_data_factor$label)
+
 # Train a QDA model (using rda from klaR library to account for the high-dimensional data by introducing a small regularization factor to the covariance matrices, making them invertible even with the few samples available)
-qda_model <- rda(label ~ ., data = train_data1, gamma = 0.01, lambda = 0.5)
+qda_model <- rda(label ~ ., data = train_data_factor, gamma = 0.01, lambda = 0.5)
 
 # Print the model summary
 summary(qda_model)
@@ -364,13 +375,13 @@ summary(qda_model)
 
 ```{r}
 # Predict the label of the test data
-qda_predictions <- predict(qda_model, test_data1[,-1])  # Exclude label column
+qda_predictions <- predict(qda_model, test_data_factor[,-1])  # Exclude label column
 qda_predicted_labels <- qda_predictions$class
 ```
 
 ```{r}
 # Confusion matrix
-qda_conf_matrix <- confusionMatrix(qda_predicted_labels, as.factor(test_data1$label))
+qda_conf_matrix <- confusionMatrix(qda_predicted_labels, test_data_factor$label)
 qda_conf_matrix
 ```
 
@@ -404,9 +415,6 @@ cat("AUC:", round(qda_auc_value, 3), "\n")
 
 ### Random Forest
 
-```{r}
-library(randomForest)
-```
 
 ```{r}
 # Train Random Forest with mtry = sqrt(number of predictors)
@@ -424,7 +432,7 @@ rf_predictions <- predict(rf_model, test_data1)
 
 # Evaluating the model with a confusion matrix
 conf_matrix_rf <- confusionMatrix(rf_predictions, as.factor(test_data1$label))
-print(conf_matrix_rf)
+print(conf_matrix_rf)4
 ```
 
 ```{r}
@@ -445,7 +453,6 @@ rf_probs <- predict(rf_model, test_data1, type = "prob")[, 2]
 
 ```{r}
 # Create ROC curve
-library(pROC)
 roc_curve_rf <- roc(test_data1$label, rf_probs)
 plot(roc_curve_rf, col = "blue", main = "ROC Curve for Random Forest")
 ```
@@ -465,10 +472,6 @@ cat("AUC:", round(auc_value_rf, 3), "\n")
 ```
 
 ### K-NN
-
-```{r}
-library(class)
-```
 
 ```{r}
 # Create matrices for predictors (X)
@@ -559,61 +562,48 @@ cat("AUC:", round(auc_value_knn, 3), "\n")
 ### Support Vector Machine (SVM)
 
 ```{r}
-#Packages
-library(e1071)
-```
-
-```{r}
 test_data_factor <- test_data1
 train_data_factor <- train_data1
-#View(test_data_factor)
 
 test_data_factor$label <- factor(test_data_factor$label)
 train_data_factor$label <- factor(train_data_factor$label)
-View(test_data_factor)
 
 #Model
-svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear")
-svm_predictions <- predict(svm_model, test_data_factor[,-1])
+svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear", probability = TRUE)
+svm_predictions <- predict(svm_model, test_data_factor[,-1], probability = TRUE)
+svm_pred_prob <- attr(svm_predictions, "probabilities")[, 2]
 ```
 
 ```{r}
 # Accuracy
 svm_accuracy <- mean(svm_predictions == test_data_factor$label)
-print(paste("SVM Accuracy: ", svm_accuracy))
 
 # Confusion matrix
-svm_conf_matrix <- table(Predicted = svm_predictions, Actual = test_data_factor$label)
-print(svm_conf_matrix)
-
-svm_recall_per_class <- diag(svm_conf_matrix) / rowSums(svm_conf_matrix)
+svm_conf_matrix <- confusionMatrix(svm_predictions, test_data_factor$label)
 
 # Balanced accuracy
-svm_balanced_accuracy <- mean(svm_recall_per_class)
-print(paste("SVM Balanced Accuracy: ", svm_balanced_accuracy))
+svm_balanced_accuracy <- svm_conf_matrix$byClass['Balanced Accuracy']
 
-svm_precision_per_class <- diag(svm_conf_matrix) / colSums(svm_conf_matrix)
-svm_f1_score_per_class <- 2 * (svm_precision_per_class * svm_recall_per_class) / (svm_precision_per_class + svm_recall_per_class)
+# F1 Score
+svm_f1 <- svm_conf_matrix$byClass['F1']
 
-# F1 Scores for each class
-cat("SVM F1 Score per class: ", svm_f1_score_per_class, "\n")
-svm_average_f1_score <- mean(svm_f1_score_per_class)
-print(paste("SVM Average F1-Score: ", svm_average_f1_score))
-
+# ROC Curve & AUC
+svm_roc_curve <- roc(test_data_factor$label, svm_pred_prob)
+plot(svm_roc_curve, main = "ROC Curve", col = "blue", lwd = 2)
+svm_auc <- auc(svm_roc_curve)
+```
+```{r}
+cat("Support Vector Machine Model Evaluation Summary:\n")
+cat("Accuracy:", round(svm_accuracy, 3), "\n")
+cat("Balanced Accuracy:", round(svm_balanced_accuracy, 3), "\n")
+cat("F1 Score:", round(svm_f1, 3), "\n")
+cat("AUC:", round(svm_auc, 3), "\n")
 ```
 
 ### Gradient Boosting Decision Tree (GBDT)
 
-```{r}
-#Packages
-library(gbm)
-library(caret)
-library(pROC)
-```
 
 ```{r}
-#RNAdata$label <- as.numeric(as.factor(RNAdata$label)) - 1
-
 test_data_gbdt <- test_data1
 train_data_gbdt <- train_data1
 
@@ -640,30 +630,33 @@ gbdt_predictions_class <- ifelse(gbdt_predictions > 0.5, 1, 0)
 ```{r}
 # Accuracy
 gbdt_accuracy <- mean(gbdt_predictions_class == test_data_gbdt$label)
-print(paste("GBDT Accuracy: ", gbdt_accuracy))
 
 # Confusion Matrix
 gbdt_conf_matrix <- confusionMatrix(as.factor(gbdt_predictions_class), as.factor(test_data_gbdt$label))
-print(gbdt_conf_matrix)
 
 # Balanced Accuracy
 gbdt_balanced_accuracy <- mean(gbdt_conf_matrix$byClass["Sensitivity"], gbdt_conf_matrix$byClass["Specificity"])
-print(paste("GBDT Balanced Accuracy: ", gbdt_balanced_accuracy))
 
 # F1 Score
 gbdt_f1_score <- 2 * (gbdt_conf_matrix$byClass["Precision"] * gbdt_conf_matrix$byClass["Recall"]) / 
   (gbdt_conf_matrix$byClass["Precision"] + gbdt_conf_matrix$byClass["Recall"])
-print(paste("GBDT F1 Score: ", gbdt_f1_score))
 
 # AUC 
 gbdt_roc_curve <- roc(test_data_gbdt$label, gbdt_predictions)
 gbdt_auc_value <- auc(gbdt_roc_curve)
-print(paste("GBDT AUC: ", gbdt_auc_value))
 
 # ROC Curve
 plot.roc(gbdt_roc_curve, main = "GBDT ROC Curve", col = "blue", lwd = 2)
 
 ```
+```{r}
+cat("Gradient Boosting Decision Trees Model Evaluation Summary:\n")
+cat("Accuracy:", round(gbdt_accuracy, 3), "\n")
+cat("Balanced Accuracy:", round(gbdt_balanced_accuracy, 3), "\n")
+cat("F1 Score:", round(gbdt_f1_score, 3), "\n")
+cat("AUC:", round(gbdt_auc_value, 3), "\n")
+```
+
 
 
 
