@@ -93,7 +93,7 @@ cat("Training set size:", nrow(train2_data), "\n")
 cat("Test set size:", nrow(test2_data), "\n")
 ```
 
-### Lasso with Logistic Regression
+# Lasso with Logistic Regression
 
 As we are dealing with an extremly high-dimensional dataset, we will perform a feature-pre-selection based on the variance of the features
 
@@ -248,7 +248,7 @@ balanced_accuracy <- (sensitivity + specificity) / 2
 cat("Balanced Accuracy on Test Data:", balanced_accuracy, "\n")
 ```
 
-### Random Forest for Feature Selection
+# Random Forest for Feature Selection
 
 ```{r}
 library(randomForest)
@@ -383,7 +383,7 @@ conf_matrix_rf <- confusionMatrix(rf_predictions, test_Y)
 print(conf_matrix_rf)
 ```
 
-### Gradient Boosting Feature Selection
+# Gradient Boosting Feature Selection
 
 ```{r}
 # Load required libraries
@@ -554,7 +554,7 @@ GBbalanced_accuracy <- (sensitivity + specificity) / 2
 cat("Balanced Accuracy:", GBbalanced_accuracy, "\n")
 ```
 
-#### GB2 Variance threshold 0.01
+# GB2 Variance threshold 0.01
 
 ```{r}
 # Load required libraries
@@ -716,7 +716,7 @@ svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear")
 svm_predictions <- predict(svm_model, test_data_factor[,-1])
 ```
 
-### XGBoost
+# XGBoost
 
 ```{r}
 library(xgboost)
@@ -897,7 +897,7 @@ xgb_model <- xgboost(
 xgb.importance(model = xgb_model)
 ```
 
-#### SVM
+# SVM
 
 ```{r}
 # Variance-Based Feature Selection
