@@ -13,7 +13,7 @@ editor_options:
 
 The aim of task 2 is to select properties of a molecule in a compound or random probe determine whether a compound binds to a target site on thrombin. This knowledge is required to design new compounds that can be used in drugs.
 
-## T1.1 Data Preparation and Summary Statistics
+# T1.1 Data Preparation and Summary Statistics
 
 ```{r}
 # Load all libraries required to execute the code in this notebook
@@ -31,7 +31,7 @@ MLData_Task2 <- read.csv("data2.csv.gz", header=TRUE)
 #View(MLData_Task2)
 ```
 
-#### Dataset-level statistics
+## Dataset-level statistics
 
 ```{r}
 # Check for any missing valus in the dataset
@@ -59,7 +59,7 @@ sum(MLData_Task2 == 0) / (nrow(MLData_Task2) * ncol(MLData_Task2))
 
 As we can see, the dataset is very sparse.
 
-#### Feature-level Statistics
+## Feature-level Statistics
 
 ```{r}
 # Variance-Based Feature Selection
@@ -67,9 +67,9 @@ feature_variances <- apply(MLData_Task2, 2, var)
 cat("Proportion of low-variance features (< 0.01):", mean(feature_variances < 0.01), "\n")
 ```
 
-## T2.2 Training and Evaluation of Feature Selection methods
+# T2.2 Training and Evaluation of Feature Selection methods
 
-### Split data into Train and Test data
+# Lasso with Logistic Regression
 
 ```{r}
 # Random split (80% training, 20% testing)
@@ -83,8 +83,8 @@ train2_data <- MLData_Task2[train_indices, ]
 test2_data <- MLData_Task2[-train_indices, ]
 
 # Prepare data
-train_X <- as.matrix(train2_data[, -1])  # Exclude label column
-test_X <- as.matrix(test2_data[, -1])  # Exclude label column
+train_X <- as.matrix(train2_data[, -1])
+test_X <- as.matrix(test2_data[, -1])
 train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))
 test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
 
@@ -92,8 +92,6 @@ test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
 cat("Training set size:", nrow(train2_data), "\n")
 cat("Test set size:", nrow(test2_data), "\n")
 ```
-
-# Lasso with Logistic Regression
 
 As we are dealing with an extremly high-dimensional dataset, we will perform a feature-pre-selection based on the variance of the features
 
@@ -129,8 +127,8 @@ calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
     FN <- confusion_matrix[2, 1]
     TN <- confusion_matrix[1, 1]
     FP <- confusion_matrix[1, 2]
-    sensitivity <- TP / (TP + FN)  # True Positive Rate
-    specificity <- TN / (TN + FP)  # True Negative Rate
+    sensitivity <- TP / (TP + FN)
+    specificity <- TN / (TN + FP)  
   }
   
   balanced_acc <- (sensitivity + specificity) / 2
@@ -151,23 +149,24 @@ We will perform a 5-fold cross validation on the data using the train control fu
 ```{r}
 # Define train control with custom summaryFunction
 train_control <- trainControl(
-  method = "cv",                     # Cross-validation
-  number = 10,                        # Number of folds
-  summaryFunction = calculate_balanced_accuracy, # Use custom metric
-  classProbs = TRUE,                 # Enable probability calculations
-  savePredictions = "final"          # Save predictions for further analysis
+  method = "cv",
+  number = 10,
+  summaryFunction = calculate_balanced_accuracy,
+  classProbs = TRUE,
+  savePredictions = "final"
 )
 ```
 
 ```{r}
 # Define grid for lambda values
 lambda_grid <- expand.grid(
-  alpha = 1,                          # LASSO (alpha = 1)
-  lambda = 10^seq(-5, -0.5, length.out = 10) # Lambda grid
+  alpha = 1,
+  lambda = 10^seq(-5, -0.5, length.out = 10)
 )
 ```
 
 ```{r}
+# Convert label column to factor
 train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
 test_Y <- factor(test_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
 
@@ -176,10 +175,10 @@ set.seed(42)
 lasso_model <- train(
   x = train_X,
   y = train_Y,
-  method = "glmnet",                  # Use glmnet for LASSO
-  trControl = train_control,          # Custom train control
-  tuneGrid = lambda_grid,             # Grid of lambdas
-  metric = "BalancedAccuracy",        # Optimize balanced accuracy
+  method = "glmnet",
+  trControl = train_control,
+  tuneGrid = lambda_grid,
+  metric = "BalancedAccuracy",
   weights = class_weights
 )
 ```
@@ -195,14 +194,11 @@ print(lasso_model$bestTune)
 coefficients <- coef(lasso_model$finalModel, s = best_lambda)
 
 # Count non-zero coefficients (excluding the intercept)
-non_zero_count <- sum(coefficients != 0) - 1  # Subtract 1 for the intercept
+non_zero_count <- sum(coefficients != 0) - 1
 cat("Number of non-zero coefficients:", non_zero_count, "\n")
 ```
 
 ```{r}
-# View results
-print(lasso_model$results)
-
 # Plot results
 plot(lasso_model)
 ```
@@ -217,7 +213,7 @@ num_features <- numeric(length(lambda_values))
 # Loop through each lambda and count non-zero coefficients
 for (i in seq_along(lambda_values)) {
   coefficients <- coef(lasso_model$finalModel, s = lambda_values[i])
-  num_features[i] <- sum(coefficients != 0) - 1  # Subtract 1 for the intercept
+  num_features[i] <- sum(coefficients != 0) - 1
 }
 
 # Plot the results
@@ -241,8 +237,8 @@ lasso_preds <- factor(lasso_preds, levels = levels(test_Y))
 # Calculate balanced accuracy
 confusion_matrix <- table(test_Y, lasso_preds)
 
-sensitivity <- confusion_matrix[2, 2] / (confusion_matrix[2, 2] + confusion_matrix[2, 1])  # True Positive Rate
-specificity <- confusion_matrix[1, 1] / (confusion_matrix[1, 1] + confusion_matrix[1, 2])  # True Negative Rate
+sensitivity <- confusion_matrix[2, 2] / (confusion_matrix[2, 2] + confusion_matrix[2, 1])
+specificity <- confusion_matrix[1, 1] / (confusion_matrix[1, 1] + confusion_matrix[1, 2])
 balanced_accuracy <- (sensitivity + specificity) / 2
 
 cat("Balanced Accuracy on Test Data:", balanced_accuracy, "\n")
@@ -263,8 +259,8 @@ train2_data <- MLData_Task2[train_indices, ]
 test2_data <- MLData_Task2[-train_indices, ]
 
 # Prepare data
-train_X <- as.matrix(train2_data[, -1])  # Exclude label column
-test_X <- as.matrix(test2_data[, -1])  # Exclude label column
+train_X <- as.matrix(train2_data[, -1])
+test_X <- as.matrix(test2_data[, -1])
 train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))
 test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
 
@@ -296,7 +292,7 @@ sqrt(31,269) still leaves \~173 features to be considered at each split.
 ```{r}
 # Define the hyperparameter grid for tuning
 tune_grid <- expand.grid(
-  mtry = c(173)  # Number of features considered as candidates each time the tree is split
+  mtry = c(100, 130, 173)
 )
 ```
 
@@ -311,8 +307,8 @@ calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
   TN <- confusion_matrix[1, 1]
   FP <- confusion_matrix[1, 2]
 
-  sensitivity <- TP / (TP + FN)  # True Positive Rate
-  specificity <- TN / (TN + FP)  # True Negative Rate
+  sensitivity <- TP / (TP + FN)
+  specificity <- TN / (TN + FP)
   balanced_acc <- (sensitivity + specificity) / 2
 
   return(c(BalancedAccuracy = balanced_acc))
@@ -324,10 +320,10 @@ We are using a 5-fold Cross-validation to find the optimal split nodes and value
 ```{r}
 # Set up cross-validation
 control <- trainControl(
-  method = "cv",            # Cross-validation
-  number = 5,               # 5-fold CV
-  verboseIter = TRUE,       # Print progress
-  savePredictions = "final", # Save predictions
+  method = "cv",
+  number = 5, 
+  verboseIter = TRUE,
+  savePredictions = "final",
   summaryFunction = calculate_balanced_accuracy
 )
 ```
@@ -338,30 +334,51 @@ We are training the model on our training dataset that only contains the selecte
 train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
 test_Y <- factor(test_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
 
-# Train the model
-set.seed(42)
-rf_tuned_model <- train(
-  x = train_X,
-  y = train_Y,
-  method = "rf",
-  metric = "BalancedAccuracy",      # Metric to optimize
-  tuneGrid = tune_grid,     # Hyperparameter grid
-  trControl = control,
-  ntree = 200,             # Number of trees
-  nodesize = 15,
-  importance = TRUE
-)
+# Define values to test for ntree and nodesize
+ntree_values <- c(100, 200, 500)
+nodesize_values <- c(5, 10, 15)
 
-# Display the best parameters
-print(rf_tuned_model$bestTune)
+# Initialize variables to track the best model
+best_model <- NULL
+best_balanced_accuracy <- 0
+
+# Loop over combinations of ntree and nodesize
+for (ntree in ntree_values) {
+  for (nodesize in nodesize_values) {
+    set.seed(42)
+    
+    # Train the model for each combination
+    rf_tuned_model <- train(
+      x = train_X,
+      y = train_Y,
+      method = "rf",
+      metric = "BalancedAccuracy",
+      tuneGrid = tune_grid,  # Tuning mtry
+      trControl = control,
+      ntree = ntree,         # Specify ntree
+      nodesize = nodesize,   # Specify nodesize
+      importance = TRUE
+    )
+    
+    # Check performance on validation
+    best_index <- which.max(rf_tuned_model$results$BalancedAccuracy)
+    current_balanced_accuracy <- rf_tuned_model$results$BalancedAccuracy[best_index]
+    
+    # Update the best model if current is better
+    if (current_balanced_accuracy > best_balanced_accuracy) {
+      best_balanced_accuracy <- current_balanced_accuracy
+      best_model <- rf_tuned_model
+    }
+  }
+}
+
+# Print the best model and performance
+print(best_model)
 ```
 
 ```{r}
-# Extract the final random forest model
-rf_model <- rf_tuned_model$finalModel
-
 # Use the randomForest importance function
-feature_importance <- randomForest::importance(rf_model)
+feature_importance <- randomForest::importance(best_model)
 
 # Get features with non-zero importance
 selected_features <- rownames(feature_importance)[apply(feature_importance, 1, function(x) any(x > 0))]
@@ -371,8 +388,25 @@ print(length(selected_features))
 ```
 
 ```{r}
+# Retrain model on the subset of data with only the selected features 
+reduced_train_X <- train_data[, selected_features]
+reduced_test_X <- test_data[, selected_features]
+```
+
+```{r}
+# Train best random forest model on mtry = sqrt(2200)
+rf_final_model <- randomForest(
+  x = reduced_train_X,
+  y = train_Y,
+  ntree = 200,
+  mtry = 47, 
+  nodesize = 10
+)
+```
+
+```{r}
 # Predicting on test set
-rf_predictions <- predict(rf_tuned_model, newdata = test_X)
+rf_predictions <- predict(rf_final_model, newdata = reduced_test_X)
 ```
 
 ```{r}
@@ -685,37 +719,6 @@ GBbalanced_accuracy <- (sensitivity + specificity) / 2
 cat("Balanced Accuracy:", GBbalanced_accuracy, "\n")
 ```
 
-### SVM with recursive feature elimination
-
-```{r}
-#Packages
-library(e1071)
-```
-
-```{r}
-# Random split (80% training, 20% testing)
-set.seed(123)
-train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
-
-# Create training and testing datasets
-train2_data <- MLData_Task2[train_indices, ]
-test2_data <- MLData_Task2[-train_indices, ]
-
-# Prepare data
-train_X <- as.matrix(train2_data[, -1])  # Exclude label column
-test_X <- as.matrix(test2_data[, -1])  # Exclude label column
-train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))
-test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
-
-# Verify split
-cat("Training set size:", nrow(train2_data), "\n")
-cat("Test set size:", nrow(test2_data), "\n")
-
-#Model
-svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear")
-svm_predictions <- predict(svm_model, test_data_factor[,-1])
-```
-
 # XGBoost
 
 ```{r}
@@ -767,33 +770,11 @@ balanced_accuracy <- function(preds, dtrain) {
 ```
 
 ```{r}
-# Perform cross-validation
-cv_results <- xgb.cv(
-  params = list(
-    objective = "binary:logistic"
-  ),
-  data = train_matrix,
-  nfold = 5,
-  nrounds = 100,
-  early_stopping_rounds = 10,
-  verbose = FALSE,
-  feval = balanced_accuracy,
-  maximize = TRUE
-)
-```
-
-```{r}
-# Extract the Best Number of Rounds
-best_nrounds <- cv_results$best_iteration
-cat("Best Iteration:", best_iteration, "\n")
-```
-
-```{r}
 # Grid search for hyperparameter tuning
 search_grid <- expand.grid(
-  max_depth = c(3, 6, 10),
-  eta = c(0.01, 0.05, 0.1),
-  colsample_bytree = c(0.5, 0.7, 1.0)
+  max_depth = c(2, 4, 6, 8),
+  eta = c(0.01, 0.05, 0.07, 0.1),
+  colsample_bytree = c(0.7, 1.0)
 )
 
 # Initialize variables to track the best model
@@ -816,9 +797,9 @@ for (i in 1:nrow(search_grid)) {
     nfold = 5,
     nrounds = 100,
     early_stopping_rounds = 10,
-    feval = balanced_accuracy, # Custom metric
-    maximize = TRUE,           # Maximize Balanced Accuracy
-    verbose = TRUE
+    feval = balanced_accuracy,
+    maximize = TRUE,
+    verbose = FALSE
   )
   
   # Extract the best Balanced Accuracy
@@ -856,7 +837,7 @@ selected_features <- nrow(importance)
 cat("Number of selected features:", selected_features, "\n")
 
 # Count the number of features with non-zero importance
-non_zero_features <- sum(importance$Gain > 0)  # Gain is a common metric
+non_zero_features <- sum(importance$Gain > 0)
 cat("Number of features with non-zero importance:", non_zero_features, "\n")
 ```
 
@@ -879,22 +860,6 @@ conf_matrix <- confusionMatrix(binary_predictions, true_labels)
 
 # Print the confusion matrix and balanced accuracy
 print(conf_matrix)
-```
-
-```{r}
-# Train the XGBoost model with the chosen learning rate
-xgb_model <- xgboost(
-  data = train_matrix,
-  eta = lambda,
-  max_depth = 4,
-  nrounds = 5000,
-  objective = "reg:squarederror",
-  verbose = 0,
-  early_stopping_rounds = 10,
-)
-
-# Feature importance
-xgb.importance(model = xgb_model)
 ```
 
 # SVM
