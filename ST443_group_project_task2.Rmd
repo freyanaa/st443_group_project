@@ -677,7 +677,7 @@ shrinkage_values <- c(0.01, 0.05, 0.1, 0.2)
 # Creating a grid of parameters to search
 GBtune_grid <- expand.grid(
   shrinkage = shrinkage_values,  # Learning rate
-  n.trees = 50,                 # Number of trees
+  n.trees = 100,                 # Number of trees
   interaction.depth = 3,         # Tree depth
   n.minobsinnode = 10           # Minimum observations in terminal nodes
 )
@@ -692,7 +692,7 @@ gbm_tuned_model <- train(
   method = "gbm",                    # Gradient Boosting Machine
   trControl = GBcontrol,               # Cross-validation settings
   tuneGrid = GBtune_grid,              # Hyperparameter grid
-  metric = "BalancedAccuracy",                    # Metric to optimize (ROC is suitable for classification)
+  metric = "ROC",                    # Metric to optimize (ROC is suitable for classification)
   verbose = FALSE                    # Suppress output
 )
 ```
@@ -762,9 +762,6 @@ svm_predictions <- predict(svm_model, test_data_factor[,-1])
 
 ```{r}
 library(xgboost)
-```
-
-```{r}
 # Random split (80% training, 20% testing)
 set.seed(123)
 train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
@@ -773,155 +770,195 @@ train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
 train2_data <- MLData_Task2[train_indices, ]
 test2_data <- MLData_Task2[-train_indices, ]
 
-# Ensure labels are 0 and 1 for XGBoost
-train2_data$label <- ifelse(train2_data$label == -1, 0, 1)
-test2_data$label <- ifelse(test2_data$label == -1, 0, 1)
-
 # Prepare data for XGBoost
 train_matrix <- xgb.DMatrix(data = as.matrix(train2_data[,-1]), label = train2_data$label)
 test_matrix <- xgb.DMatrix(data = as.matrix(test2_data[,-1]), label = test2_data$label)
 ```
 
 ```{r}
-balanced_accuracy <- function(preds, dtrain) {
-  # Get true labels
-  labels <- getinfo(dtrain, "label")
-  
-  # Convert predicted probabilities to binary classes (threshold = 0.5)
-  predictions <- ifelse(preds > 0.5, 1, 0)
-  
-  # Confusion matrix components
-  TP <- sum(predictions == 1 & labels == 1)
-  TN <- sum(predictions == 0 & labels == 0)
-  FP <- sum(predictions == 1 & labels == 0)
-  FN <- sum(predictions == 0 & labels == 1)
-  
-  # Sensitivity and Specificity
-  sensitivity <- TP / (TP + FN)
-  specificity <- TN / (TN + FP)
-  
-  # Balanced Accuracy
-  balanced_acc <- (sensitivity + specificity) / 2
-  
-  # Return metric as a list
-  return(list(metric = "BalancedAccuracy", value = balanced_acc))
-}
+lambda <- 0.1
 ```
 
 ```{r}
-# Perform cross-validation
-cv_results <- xgb.cv(
-  params = list(
-    objective = "binary:logistic"
-    ),
-    data = train_matrix,
-    nfold = 5,
-    nrounds = 100,
-    early_stopping_rounds = 10,
-    verbose = FALSE,
-    feval = balanced_accuracy,
-    maximize = TRUE
-)
-```
-
-```{r}
-# Extract the Best Number of Rounds
-best_nrounds <- cv_results$best_iteration
-cat("Best Iteration:", best_iteration, "\n")
-```
-
-```{r}
-# Grid search for hyperparameter tuning
-search_grid <- expand.grid(
-  max_depth = c(3, 6, 10),
-  eta = c(0.01, 0.05, 0.1),
-  colsample_bytree = c(0.5, 0.7, 1.0)
-)
-
-# Initialize variables to track the best model
-best_balanced_acc <- 0
-best_params <- list()
-
-# Perform grid search
-for (i in 1:nrow(search_grid)) {
-  params <- list(
-    objective = "binary:logistic",
-    max_depth = search_grid$max_depth[i],
-    eta = search_grid$eta[i],
-    colsample_bytree = search_grid$colsample_bytree[i]
-  )
-  
-  # Perform cross-validation
-  cv_results <- xgb.cv(
-    params = params,
-    data = train_matrix,
-    nfold = 5,
-    nrounds = 100,
-    early_stopping_rounds = 10,
-    feval = balanced_accuracy, # Custom metric
-    maximize = TRUE,           # Maximize Balanced Accuracy
-    verbose = TRUE
-  )
-  
-  # Extract the best Balanced Accuracy
-  mean_balanced_acc <- max(cv_results$evaluation_log$test_BalancedAccuracy_mean)
-  
-  # Update the best model parameters if current model is better
-  if (mean_balanced_acc > best_balanced_acc) {
-    best_balanced_acc <- mean_balanced_acc
-    best_params <- params
-    best_nrounds <- cv_results$best_iteration
-  }
-}
-```
-
-```{r}
-# Train final model with optimal hyperparameters
-final_model <- xgb.train(
-  params = best_params,
+# Train the XGBoost model with the chosen learning rate
+xgb_model <- xgboost(
   data = train_matrix,
-  nrounds = best_nrounds
+  eta = lambda,
+  max_depth = 4,
+  nrounds = 5000,
+  objective = "reg:squarederror",
+  verbose = 0,
+  early_stopping_rounds = 10,
+)
+
+# Feature importance
+xgb.importance(model = xgb_model)
+```
+
+#### SVM 
+
+
+```{r}
+# Variance-Based Feature Selection
+feature_variances <- apply(MLData_Task2, 2, var)
+cat("Proportion of low-variance features (< 0.01):", mean(feature_variances < 0.01), "\n")
+```
+
+
+```{r}
+# Load required libraries
+library(caret)
+library(e1071)
+library(Matrix)
+```
+
+```{r}
+# Define custom Balanced Accuracy function
+calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
+  confusion_matrix <- table(data$obs, data$pred)
+  
+  # Handle edge cases
+  if (nrow(confusion_matrix) < 2 || ncol(confusion_matrix) < 2) {
+    sensitivity <- 0
+    specificity <- 0
+  } else {
+    TP <- confusion_matrix[2, 2]
+    FN <- confusion_matrix[2, 1]
+    TN <- confusion_matrix[1, 1]
+    FP <- confusion_matrix[1, 2]
+    sensitivity <- TP / (TP + FN)  # True Positive Rate
+    specificity <- TN / (TN + FP)  # True Negative Rate
+  }
+  
+  balanced_acc <- (sensitivity + specificity) / 2
+  return(c(BalancedAccuracy = balanced_acc))
+}
+
+```
+
+```{r}
+# Random split (80% training, 20% testing)
+set.seed(123)
+SVMtrain_indices <- sample(1:nrow(MLData_Task2), size = 0.7 * nrow(MLData_Task2))
+```
+
+```{r}
+# Create training and testing datasets
+SVMtrain2_data <- MLData_Task2[SVMtrain_indices, ]
+SVMtest2_data <- MLData_Task2[-SVMtrain_indices, ]
+
+# Prepare data
+SVMtrain_X <- as.matrix(SVMtrain2_data[, -1])  # Exclude label column
+SVMtest_X <- as.matrix(SVMtest2_data[, -1])  # Exclude label column
+SVMtrain_Y <- factor(SVMtrain2_data$label, levels = c(-1, 1), labels = c(0, 1))
+SVMtest_Y <- factor(SVMtest2_data$label, levels = c(-1, 1), labels = c(0, 1))
+
+# Verify split
+cat("Training set size:", nrow(SVMtrain2_data), "\n")
+cat("Test set size:", nrow(SVMtest2_data), "\n")
+```
+
+```{r}
+# Calculate the variance of each feature
+SVMfeature_variances <- apply(SVMtrain_X, 2, var)
+
+# Identify features with variance >= 0.01
+SVMselected_features <- which(SVMfeature_variances >= 0.01)
+
+# Print the number of features removed
+cat("Number of features removed:", ncol(SVMtrain_X) - length(SVMselected_features), "\n")
+cat("Number of features retained:", length(SVMselected_features), "\n")
+
+# Apply on training and test dataset
+SVMtrain_X <- SVMtrain_X[, SVMselected_features]
+SVMtest_X <- SVMtest_X[, SVMselected_features]
+```
+
+```{r}
+# Use make.names to ensure valid variable names
+levels(SVMtrain_Y) <- make.names(levels(SVMtrain_Y))
+levels(SVMtest_Y) <- make.names(levels(SVMtest_Y))
+
+# Verify the updated class labels
+cat("Training class levels:", levels(SVMtrain_Y), "\n")
+cat("Testing class levels:", levels(SVMtest_Y), "\n")
+```
+
+
+```{r}
+class_weights <- ifelse(SVMtrain_Y == 1,
+                        1 / sum(SVMtrain_Y == 1),
+                        1 / sum(SVMtrain_Y == 0))
+```
+
+
+```{r}
+# Define train control with custom summaryFunction
+SVMtrain_control <- trainControl(
+  method = "cv",                     # Cross-validation
+  number = 5,                        # Number of folds
+  summaryFunction = calculate_balanced_accuracy, # Use custom metric
+  classProbs = TRUE,                 # Enable probability calculations
+  savePredictions = "final",          # Save predictions for further analysis
+  allowParallel = FALSE 
 )
 ```
 
 ```{r}
-# Print the results
-print(best_params)
-cat("Best Balanced Accuracy:", best_balanced_acc, "\n")
-cat("Best number of rounds:", best_nrounds, "\n")
+svm_tune_grid <- expand.grid(
+  sigma = c(0.01, 0.1, by=0.01),          # Fewer values
+  C = c(0.1, 1,10,100)                   # Fewer values
+)
 ```
 
 ```{r}
-# Get feature importance from the final model
-importance <- xgb.importance(model = final_model)
-
-# Number of features selected (importance score > 0)
-selected_features <- nrow(importance)
-cat("Number of selected features:", selected_features, "\n")
-
-# Count the number of features with non-zero importance
-non_zero_features <- sum(importance$Gain > 0)  # Gain is a common metric
-cat("Number of features with non-zero importance:", non_zero_features, "\n")
+# Convert training and testing data to sparse matrices
+sparse_train_matrix <- as(
+  Matrix(as.matrix(SVMtrain_X), sparse = TRUE),
+  "dgCMatrix"
+)
+sparse_test_matrix <- as(
+  Matrix(as.matrix(SVMtest_X), sparse = TRUE),
+  "dgCMatrix"
+)
 ```
 
 ```{r}
-# Use the best model to predict on the test set
-xgb_predictions <- predict(final_model, newdata = test_matrix)
+# Train the SVM model
+set.seed(123)
+svm_model <- train(
+  x = sparse_train_matrix,
+  y = SVMtrain_Y,
+  method = "svmRadial",
+  metric = "BalancedAccuracy",
+  trControl = SVMtrain_control,
+  tuneGrid = svm_tune_grid,
+  weights = class_weights
+)
 
-binary_predictions <- ifelse(xgb_predictions > 0.5, 1, 0)
-
-# Convert binary predictions to a factor
-binary_predictions <- factor(binary_predictions, levels = c(0, 1))
-
-# Convert true labels to a factor with the same levels
-true_labels <- factor(test2_data$label, levels = c(0, 1))
+# Print the model
+print(svm_model)
 ```
 
 ```{r}
-conf_matrix <- confusionMatrix(binary_predictions, true_labels)
+# Evaluate the Model
+SVMtest_predictions <- predict(svm_model, SVMtest_X)
+SVMconf_matrix <- confusionMatrix(SVMtest_predictions, SVMtest_Y)
+print(SVMconf_matrix)
 ```
 
 ```{r}
-# Print the confusion matrix and balanced accuracy
-print(conf_matrix)
+# Calculate Balanced Accuracy for the test set
+TP <- SVMconf_matrix$table[2, 2]  # True Positives
+FN <- SVMconf_matrix$table[2, 1]  # False Negatives
+TN <- SVMconf_matrix$table[1, 1]  # True Negatives
+FP <- SVMconf_matrix$table[1, 2]  # False Positives
+
+# Handle division by zero
+SVMsensitivity <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+SVMspecificity <- ifelse((TN + FP) == 0, 0, TN / (TN + FP))
+SVMbalanced_accuracy <- (SVMsensitivity + SVMspecificity) / 2
+
+cat("Balanced Accuracy on test set:", SVMbalanced_accuracy, "\n")
 ```
+
