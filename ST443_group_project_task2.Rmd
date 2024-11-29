@@ -300,7 +300,7 @@ tune_grid <- expand.grid(
 )
 ```
 
-We will use the balanced accuracy as our performance metric, because the dataset is highly imbalanced.
+We will use the balanced accuracy as our performance metric as the dataset is highly imbalanced.
 
 ```{r}
 # Write balanced accuracy as a function that can be accessed by trainControl
@@ -332,7 +332,7 @@ control <- trainControl(
 )
 ```
 
-We are training the model on our training dataset that only contains the selected features (variance \> 0.01). We set the number of trees to be created to 100.
+We are training the model on our training dataset that only contains the selected features (variance \> 0.01). We set the number of trees to be created to 200.
 
 ```{r}
 train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
@@ -348,7 +348,7 @@ rf_tuned_model <- train(
   tuneGrid = tune_grid,     # Hyperparameter grid
   trControl = control,
   ntree = 200,             # Number of trees
-  nodesize = 10,
+  nodesize = 15,
   importance = TRUE
 )
 
@@ -381,48 +381,6 @@ conf_matrix_rf <- confusionMatrix(rf_predictions, test_Y)
 
 # Display confusion matrix
 print(conf_matrix_rf)
-```
-
-#### Recursive Feature Elimination with Gradient Boosting Machine
-
-```{r}
-library (gbm)
-
-# Create training and testing datasets
-train_data <- MLData_Task2[train_indices, ]
-test_data <- MLData_Task2[-train_indices, ]
-
-# Define the number of trees
-n_trees = 100
-
-# Define grid of lambda (shrinkage) values to evaluate
-lambda_grid <- c(0.001,0.01,0.1)
-
-# Initialize a vector to store test errors for each lambda
-test_errors <- numeric(length(lambda_grid))
-```
-
-```{r}
-# Loop over each lambda value
-for (i in seq_along(lambda_grid)) {
-  lambda <- lambda_grid[i]
-  
-  # Train the gbm model with the current lambda (shrinkage) value
-  gbm_model <- gbm(formula = train_data$label ~ ., 
-                   data = train_data[, -1],
-                   distribution = "bernoulli", 
-                   n.trees = num_trees, 
-                   interaction.depth = 5, 
-                   shrinkage = lambda, 
-                   cv.folds = 5, 
-                   verbose = TRUE)
-  
-  # Make predictions on the test set using the optimal number of trees
-  predictions <- predict(gbm_model, newdata = test_X, n.trees = num_trees)
-  
-  # Calculate the Mean Squared Error on the test set
-  test_errors[i] <- mean((predictions - test_Y)^2)
-}
 ```
 
 ### Gradient Boosting Feature Selection
@@ -795,15 +753,13 @@ xgb_model <- xgboost(
 xgb.importance(model = xgb_model)
 ```
 
-#### SVM 
-
+#### SVM
 
 ```{r}
 # Variance-Based Feature Selection
 feature_variances <- apply(MLData_Task2, 2, var)
 cat("Proportion of low-variance features (< 0.01):", mean(feature_variances < 0.01), "\n")
 ```
-
 
 ```{r}
 # Load required libraries
@@ -884,13 +840,11 @@ cat("Training class levels:", levels(SVMtrain_Y), "\n")
 cat("Testing class levels:", levels(SVMtest_Y), "\n")
 ```
 
-
 ```{r}
 class_weights <- ifelse(SVMtrain_Y == 1,
                         1 / sum(SVMtrain_Y == 1),
                         1 / sum(SVMtrain_Y == 0))
 ```
-
 
 ```{r}
 # Define train control with custom summaryFunction
@@ -961,4 +915,3 @@ SVMbalanced_accuracy <- (SVMsensitivity + SVMspecificity) / 2
 
 cat("Balanced Accuracy on test set:", SVMbalanced_accuracy, "\n")
 ```
-
