@@ -858,23 +858,6 @@ cat("Training set size:", nrow(SVMtrain2_data), "\n")
 cat("Test set size:", nrow(SVMtest2_data), "\n")
 ```
 
-
-```{r}
-# Calculate the variance of each feature
-SVMfeature_variances <- apply(SVMtrain_X, 2, var)
-
-# Identify features with variance >= 0.01
-SVMselected_features <- which(SVMfeature_variances >= 0.01)
-
-# Print the number of features removed
-cat("Number of features removed:", ncol(SVMtrain_X) - length(SVMselected_features), "\n")
-cat("Number of features retained:", length(SVMselected_features), "\n")
-
-# Apply on training and test dataset
-SVMtrain_X <- SVMtrain_X[, SVMselected_features]
-SVMtest_X <- SVMtest_X[, SVMselected_features]
-```
-
 ```{r}
 # Calculate the variance of each feature
 SVMfeature_variances <- apply(SVMtrain_X, 2, var)
@@ -906,12 +889,6 @@ cat("Testing class levels:", levels(SVMtest_Y), "\n")
 class_weights <- ifelse(SVMtrain_Y == 1,
                         1 / sum(SVMtrain_Y == 1),
                         1 / sum(SVMtrain_Y == 0))
-```
-
-```{r}
-# Subset data to a smaller size before training
-SVMtrain_X <- SVMtrain_X[, SVMselected_features]
-SVMtest_X <- SVMtest_X[, SVMselected_features]
 ```
 
 
@@ -980,7 +957,7 @@ FP <- SVMconf_matrix$table[1, 2]  # False Positives
 # Handle division by zero
 SVMsensitivity <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
 SVMspecificity <- ifelse((TN + FP) == 0, 0, TN / (TN + FP))
-SVMbalanced_accuracy <- (sensitivity + specificity) / 2
+SVMbalanced_accuracy <- (SVMsensitivity + SVMspecificity) / 2
 
 cat("Balanced Accuracy on test set:", SVMbalanced_accuracy, "\n")
 ```
