@@ -16,7 +16,6 @@ The aim of Task 1 is to classify immune cell types based on RNA expression level
 Load and View data:
 
 ```{r}
-#setwd("C:/Users/nagel freya/OneDrive - The Boston Consulting Group, Inc/Documents/01 Master/01 Uni/01 Term/ST443 Machine Learning and Data Mining/00 Group Project")
 RNAdata <-read.csv("data1.csv.gz", header=TRUE)
 View(RNAdata)
 ```
@@ -103,9 +102,9 @@ max_values <- apply(RNAdata[,-1], 2, max)
 
 # Combine the results into a data frame
 min_max_values <- data.frame(
-  Gene = colnames(RNAdata[,-1]),  # Gene names
-  Minimum = min_values,                 # Minimum values
-  Maximum = max_values                  # Maximum values
+  Gene = colnames(RNAdata[,-1]),
+  Minimum = min_values,
+  Maximum = max_values
 )
 
 
@@ -215,8 +214,7 @@ We get that 66.17% of our entries are nullvalues, meaning that our data is very 
 
 ## T1.2 Training and evaluation of classifiers
 
-### Split data into Train and Test data
-
+### Load Necessary Libraries
 ```{r}
 # Loading necessary libraries
 library(MASS)
@@ -227,7 +225,12 @@ library(randomForest)
 library(class)
 library(e1071)
 library(gbm)
+```
 
+
+### Split data into Train and Test data
+
+```{r}
 # Set seed for reproducibility
 set.seed(123)  
 
@@ -257,16 +260,9 @@ lda_conf_matrix
 ```
 
 ```{r}
-# Extracting specific metrics
 lda_accuracy <- lda_conf_matrix$overall['Accuracy']
 lda_balanced_accuracy <- lda_conf_matrix$byClass['Balanced Accuracy']
 lda_f1_score <- lda_conf_matrix$byClass['F1']
-```
-
-```{r}
-cat("LDA Accuracy:", lda_accuracy, "\n")
-cat("LDA Balanced Accuracy:", lda_balanced_accuracy, "\n")
-cat("LDA F1 Score:", lda_f1_score, "\n")
 ```
 
 ```{r}
@@ -291,17 +287,15 @@ cat("AUC:", round(lda_auc_value, 3), "\n")
 ### Logistic Classifier
 
 ```{r}
+# Create training (80%) and testing (20%) set for logistic classifer
 train_data_log <- train_data1
 test_data_log <- test_data1
 
 train_data_log$label <- ifelse(train_data_log$label == "TREG", 1, 0)
 test_data_log$label <- ifelse(test_data_log$label == "TREG", 1, 0)
 
-# Train a logistic regression model
+# Train the logistic regression model
 logistic_model <- glm(label ~ ., data = train_data_log, family = binomial)
-
-# Print the model summary
-#summary(logistic_model)
 ```
 
 ```{r}
@@ -309,7 +303,7 @@ logistic_model <- glm(label ~ ., data = train_data_log, family = binomial)
 logistic_predictions <- predict(logistic_model, test_data_log[, -1], type = "response")
 
 # Convert probabilities to class labels (threshold = 0.5)
-logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 2, 1)
+logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 1, 0)
 ```
 
 ```{r}
@@ -327,26 +321,18 @@ print(logistic_conf_matrix)
 ```
 
 ```{r}
-# Extract metrics from the confusion matrix
 accuracy_logistic <- logistic_conf_matrix$overall['Accuracy']
 balanced_accuracy_logistic <- logistic_conf_matrix$byClass['Balanced Accuracy']
 f1_score_logistic <- logistic_conf_matrix$byClass['F1']
-
-# Print the metrics
-cat("Accuracy (Logistic):", accuracy_logistic, "\n")
-cat("Balanced Accuracy (Logistic):", balanced_accuracy_logistic, "\n")
-cat("F1 Score (Logistic):", f1_score_logistic, "\n")
 ```
 
 ```{r}
 # Calculate and plot the ROC curve
-roc_curve_logistic <- roc(test_data_log$label, logistic_predictions)  # Use probabilities for ROC
+roc_curve_logistic <- roc(test_data_log$label, logistic_predictions)
 plot(roc_curve_logistic, main = "ROC Curve for Logistic Regression", col='red')
 auc_logistic <- auc(roc_curve_logistic)
 cat("AUC:", auc_logistic, "\n")
 ```
-
-Logistic Regression Model Evaluation Summary:
 
 ```{r}
 cat("Logistic Regression Model Evaluation Summary:\n")
@@ -359,7 +345,7 @@ cat("AUC:", round(auc_logistic, 3), "\n")
 ### Quadratic Discriminant Analysis (QDA)
 
 ```{r}
-
+# Create training (80%) and testing (20%) set for qda
 test_data_factor <- test_data1
 train_data_factor <- train_data1
 
@@ -368,9 +354,6 @@ train_data_factor$label <- factor(train_data_factor$label)
 
 # Train a QDA model (using rda from klaR library to account for the high-dimensional data by introducing a small regularization factor to the covariance matrices, making them invertible even with the few samples available)
 qda_model <- rda(label ~ ., data = train_data_factor, gamma = 0.01, lambda = 0.5)
-
-# Print the model summary
-summary(qda_model)
 ```
 
 ```{r}
@@ -386,15 +369,9 @@ qda_conf_matrix
 ```
 
 ```{r}
-# Extract metrics from the confusion matrix
 qda_accuracy <- qda_conf_matrix$overall['Accuracy']
 qda_balanced_accuracy <- qda_conf_matrix$byClass['Balanced Accuracy']
 qda_f1_score <- qda_conf_matrix$byClass['F1']
-
-# Print the metrics
-cat("Accuracy (QDA):", qda_accuracy, "\n")
-cat("Balanced Accuracy (QDA):", qda_balanced_accuracy, "\n")
-cat("F1 Score (QDA):", qda_f1_score, "\n")
 ```
 
 ```{r}
@@ -415,7 +392,6 @@ cat("AUC:", round(qda_auc_value, 3), "\n")
 
 ### Random Forest
 
-
 ```{r}
 # Train Random Forest with mtry = sqrt(number of predictors)
 p <- ncol(train_data1) - 1  # Number of predictors (excluding the label column)
@@ -430,20 +406,15 @@ print(rf_model)
 # Predictions on the test data
 rf_predictions <- predict(rf_model, test_data1)
 
-# Evaluating the model with a confusion matrix
+# Confusion matrix
 conf_matrix_rf <- confusionMatrix(rf_predictions, as.factor(test_data1$label))
-print(conf_matrix_rf)4
+print(conf_matrix_rf)
 ```
 
 ```{r}
-# Extracting specific performance metrics
 accuracy_rf <- conf_matrix_rf$overall['Accuracy']
 balanced_accuracy_rf <- conf_matrix_rf$byClass['Balanced Accuracy']
 f1_score_rf <- conf_matrix_rf$byClass['F1']
-
-cat("Accuracy:", accuracy_rf, "\n")
-cat("Balanced Accuracy:", balanced_accuracy_rf, "\n")
-cat("F1 Score:", f1_score_rf, "\n")
 ```
 
 ```{r}
@@ -460,7 +431,6 @@ plot(roc_curve_rf, col = "blue", main = "ROC Curve for Random Forest")
 ```{r}
 #calculating AUC
 auc_value_rf <- auc(roc_curve_rf)
-cat("AUC:", auc_value_rf, "\n")
 ```
 
 ```{r}
@@ -474,21 +444,30 @@ cat("AUC:", round(auc_value_rf, 3), "\n")
 ### K-NN
 
 ```{r}
-# Create matrices for predictors (X)
-train_X <- as.matrix(train_data1[, -1])  # Exclude the label column
+train_X <- as.matrix(train_data1[, -1]) # Excluding the label column
 test_X <- as.matrix(test_data1[, -1])
 
 # Create vectors for labels (Y)
-train_Y <- train_data1$label
-test_Y <- test_data1$label
+train_Y <- as.factor(train_data1$label)
+test_Y <- as.factor(test_data1$label)
 ```
 
 ```{r}
-# Setting k = 5
-k <- 5
+cv_control <- trainControl(method = "cv", number = 10)
 
-# Perform k-NN classification
-knn_predictions <- knn(train_X, test_X, train_Y, k = k)
+# Tuning the knn to try k values from 1 to 20
+knn_tune <- train(train_X, train_Y, method = "knn", trControl = cv_control,
+                  tuneGrid = expand.grid(k = 1:20))
+optimal_k <- knn_tune$bestTune$k
+print(optimal_k)
+
+# optimal k is 19
+```
+
+```{r}
+# Predict probabilities on the test set
+knn_predictions <- predict(knn_tune, test_X)
+knn_probabilities <- predict(knn_tune, test_X, type = "prob")
 ```
 
 ```{r}
@@ -496,79 +475,40 @@ knn_predictions <- knn(train_X, test_X, train_Y, k = k)
 conf_matrix_knn <- confusionMatrix(knn_predictions, as.factor(test_Y))
 print(conf_matrix_knn)
 
-# Extract the confusion matrix as a table
-confusion_table <- conf_matrix_knn$table
-print(confusion_table)
-
-#Calculating Accuracy
+#Calculating Accuracy, Balanced Accuracy, F1
 accuracy_knn <- sum(diag(confusion_table)) / sum(confusion_table)
-cat("Accuracy:", accuracy_knn, "\n")
-
+balanced_accuracy_knn <- conf_matrix_knn$byClass["Balanced Accuracy"]
+f1_score_knn <- conf_matrix_knn$byClass["F1"]
 ```
 
 ```{r}
-precision_knn <- conf_matrix_knn$byClass["Precision"]
-recall_knn <- conf_matrix_knn$byClass["Recall"]
-f1_score_knn <- 2 * ((precision_knn * recall_knn) / (precision_knn + recall_knn))
-cat("F1 Score:", f1_score_knn, "\n")
-```
+# AUC Calculation
+knn_roc_obj <- roc(test_Y, knn_probabilities[, 2])
+auc_knn <- auc(knn_roc_obj)
 
-```{r}
-sensitivity_knn <- conf_matrix_knn$byClass["Sensitivity"]
-specificity_knn <- conf_matrix_knn$byClass["Specificity"]
-balanced_accuracy_knn <- (sensitivity_knn + specificity_knn) / 2
-cat("Balanced Accuracy:", balanced_accuracy_knn, "\n")
-```
-
-```{r}
-# Calculate pseudo-probabilities for AUC
-k <- 5  #The same k as used above
-knn_probabilities <- attr(knn_predictions, "prob")
-knn_probabilities <- ifelse(knn_predictions == "TREG", knn_probabilities, 1 - knn_probabilities)
-summary(knn_probabilities)  # Ensure values range between 0 and 1
-```
-
-```{r}
-# Check levels of the test_Y factor
-levels(test_Y)
-table(test_Y)
-```
-
-```{r}
-test_Y_numeric <- ifelse(test_Y == "TREG", 1, 0)  # Assuming "TREG" is the positive class
-table(test_Y_numeric)
-```
-
-```{r}
-# Calculate AUC
-roc_curve_knn <- roc(test_Y_numeric, knn_probabilities)
-auc_value_knn <- auc(roc_curve_knn)
-cat("AUC:", auc_value_knn, "\n")
-```
-
-```{r}
 # Plot ROC curve
-plot(roc_curve_knn, col = "blue", main = "ROC Curve for k-NN")
+plot(knn_roc_obj, col = "blue", main = "ROC Curve for KNN")
 ```
 
 ```{r}
-cat("Knn Classifiers Summary:\n")
+cat("KNN Classifiers Summary:\n")
 cat("Accuracy:", round(accuracy_knn, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_knn, 3), "\n")
 cat("F1 Score:", round(f1_score_knn, 3), "\n")
-cat("AUC:", round(auc_value_knn, 3), "\n")
+cat("AUC:", round(auc_knn, 3), "\n")
 ```
 
 ### Support Vector Machine (SVM)
 
 ```{r}
+# Train and test data with label as factors
 test_data_factor <- test_data1
 train_data_factor <- train_data1
 
 test_data_factor$label <- factor(test_data_factor$label)
 train_data_factor$label <- factor(train_data_factor$label)
 
-#Model
+# Model
 svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear", probability = TRUE)
 svm_predictions <- predict(svm_model, test_data_factor[,-1], probability = TRUE)
 svm_pred_prob <- attr(svm_predictions, "probabilities")[, 2]
@@ -602,6 +542,38 @@ cat("AUC:", round(svm_auc, 3), "\n")
 
 ### Gradient Boosting Decision Tree (GBDT)
 
+```{r}
+### Tuning - takes a long time to run ***
+
+# Create the tuning grid
+tune_grid <- expand.grid(
+  n.trees = c(50, 100, 150),
+  interaction.depth = c(1, 3, 5),
+  shrinkage = c(0.01, 0.1, 0.2),
+  n.minobsinnode = c(10, 20) 
+)
+
+model <- gbm(
+  formula = label ~ .,              
+  data = train_data_gbdt,              
+  distribution = "bernoulli",    
+  n.cores = 1,                   
+  verbose = FALSE        
+)
+train_control <- trainControl(method = "cv", number = 5)
+tuned_model <- train(
+  label ~ ., 
+  data = train_data_gbdt, 
+  method = "gbm", 
+  trControl = train_control, 
+  tuneGrid = tune_grid,
+  verbose = FALSE
+)
+tuned_model
+```
+
+Using the above tuning model, we found the optimal n.trees = 150, interactions.depth = 5, shrinkage = 0.1, and 
+n.minobsinnode = 20. I used those values for the model below. 
 
 ```{r}
 test_data_gbdt <- test_data1
@@ -801,9 +773,9 @@ cat("AUC:", round(auc_logistic_pca, 3), "\n")
 
 ```{r}
 # Train a QDA model on the PCA-transformed data
-install.packages("questionr")
 library(questionr)
 library(klaR)
+
 qda_pca_model <- rda(label ~ ., data = train_pca, gamma = 0.01, lambda = 0.5)
 
 # Print the model summary
@@ -857,7 +829,6 @@ cat("AUC:", round(qda_pca_auc, 3), "\n")
 ### Random Forest with PCA
 
 ```{r}
-install.packages("randomForest")
 library(randomForest)
 
 # Ensure the label column is a factor
