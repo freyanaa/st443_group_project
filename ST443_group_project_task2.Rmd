@@ -814,3 +814,186 @@ SVMbalanced_accuracy <- (SVMsensitivity + SVMspecificity) / 2
 
 cat("Balanced Accuracy on test set:", SVMbalanced_accuracy, "\n")
 ```
+
+
+
+## Elastic Net 
+
+Elastic Net is a regularized regression method that combines the strengths of Lasso (L1 regularization) and Ridge (L2 regularization). It is particularly useful for high-dimensional datasets where the number of features exceeds the number of observations or when features are highly correlated. Elastic Net introduces two hyperparameters: alpha, which controls the balance between Lasso and Ridge penalties, and lambda, which determines the overall strength of regularization. By shrinking less important coefficients towards zero and selecting only the most relevant features, Elastic Net reduces model complexity and enhances predictive performance. This makes it a powerful tool for feature selection and classification tasks in challenging datasets.
+
+```{r}
+# Load necessary libraries
+library(caret)
+library(glmnet)
+library(doParallel)
+```
+
+### Split the dataset
+Splits the dataset into 80% training and 20% testing data.
+This ensures a clear separation between data used for model building and evaluation.
+
+```{r}
+set.seed(123)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+train_data <- MLData_Task2[train_indices, ]
+test_data <- MLData_Task2[-train_indices, ]
+```
+
+### Extract features and labels:
+```{r}
+train_X <- as.matrix(train_data[, -1])  
+test_X <- as.matrix(test_data[, -1])    
+train_Y <- factor(train_data$label, levels = c(-1, 1), labels = c(0, 1))  
+test_Y <- factor(test_data$label, levels = c(-1, 1), labels = c(0, 1))    
+```
+
+- train_X and test_X hold feature matrices for training and testing, respectively.
+- train_Y and test_Y store the labels (converted from -1, 1 to 0, 1 for binary classification).
+
+### Feature pre-selection - Variance threshold: 
+```{r}
+feature_variances <- apply(train_X, 2, var)
+selected_features <- which(feature_variances >= 0.05)  
+train_X <- train_X[, selected_features]
+test_X <- test_X[, selected_features]
+
+cat("Number of features after variance filtering:", ncol(train_X), "\n")
+```
+
+- Filters out features with low variance (< 0.05), as they contribute little predictive power.
+- The threshold 0.05 reduces dimensions to ~1,194 features, balancing computational feasibility and information retention.
+
+# Comment on Threshold:
+
+- Higher Threshold (0.05): Results in fewer features (~1k), improving speed and reducing redundancy.
+- Lower Thresholds (0.01, 0.02): Retain more features (up to ~30k), but these cause issues with the Elastic Net method in this implementation (e.g., resulting in NaN balanced accuracy).
+- When thresholds are too low, issues such as multicollinearity and insufficient penalization can arise, causing numerical instability in Elastic Net.
+
+### Scale features:
+```{r}
+train_X <- scale(train_X)
+test_X <- scale(test_X)
+```
+
+Standardizes features to have zero mean and unit variance, critical for regularization-based methods like Elastic Net, which are sensitive to feature scales.
+
+### Define class weights
+```{r}
+class_weights <- ifelse(train_Y == 1, 
+                        1 / sum(train_Y == 1), 
+                        1 / sum(train_Y == 0))
+```
+
+- Accounts for class imbalance by assigning higher weights to the minority class (class 1).
+- Ensures the model does not favor the majority class disproportionately.
+
+### Custom Balanced Accuracy function
+```{r}
+calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
+  confusion_matrix <- table(data$obs, data$pred)
+  if (nrow(confusion_matrix) < 2 || ncol(confusion_matrix) < 2) {
+    sensitivity <- 0
+    specificity <- 0
+  } else {
+    TP <- confusion_matrix[2, 2]
+    FN <- confusion_matrix[2, 1]
+    TN <- confusion_matrix[1, 1]
+    FP <- confusion_matrix[1, 2]
+    sensitivity <- TP / (TP + FN)
+    specificity <- TN / (TN + FP)
+  }
+  balanced_acc <- (sensitivity + specificity) / 2
+  return(c(BalancedAccuracy = balanced_acc))
+}
+```
+
+- Calculates the balanced accuracy metric, which is the average of sensitivity (recall for the positive class) and specificity (recall for the negative class).
+- This metric is crucial for imbalanced datasets, providing a fair assessment of model performance across both classes.
+
+
+###Train Control Setup
+```{r}
+train_control <- trainControl(
+  method = "cv",
+  number = 5,
+  summaryFunction = calculate_balanced_accuracy,
+  savePredictions = "final",
+  verboseIter = TRUE
+)
+```
+
+- Specifies 5-fold cross-validation for training.
+- Uses the custom calculate_balanced_accuracy function to evaluate model performance during cross-validation.
+
+### Hyperparameter Grid
+```{r}
+elastic_net_grid <- expand.grid(
+  alpha = seq(0, 1, by = 0.2),  
+  lambda = 10^seq(-4, -2, length.out = 5)  
+)
+```
+
+Defines a grid of hyperparameters for Elastic Net:
+- alpha: Controls the balance between L1 (sparse selection) and L2 (shrinkage) penalties.
+- lambda: Regularization strength.
+
+### Train Elastic Net Model
+```{r}
+# Enable parallel processing
+cl <- makeCluster(detectCores() - 1)  # Use all available cores except one
+registerDoParallel(cl)
+
+# Train Elastic Net model
+set.seed(123)
+elastic_net_model <- train(
+  x = train_X,
+  y = train_Y,
+  method = "glmnet",
+  metric = "BalancedAccuracy",
+  trControl = train_control,
+  tuneGrid = elastic_net_grid,
+  weights = class_weights  # Pass class weights
+)
+
+# Stop the cluster after training
+stopCluster(cl)
+
+# Print the best parameters
+print(elastic_net_model$bestTune)
+```
+
+- Trains the Elastic Net model using the defined hyperparameter grid and class weights.
+- Parallel processing reduces computational time.
+
+### Evaluate Model on Test Set
+
+```{r}
+elastic_predictions <- predict(elastic_net_model, test_X)
+
+# Generate confusion matrix
+conf_matrix <- confusionMatrix(elastic_predictions, test_Y)
+
+# Print confusion matrix and metrics
+print(conf_matrix)
+```
+
+Predicts the test set labels and evaluates model performance using a confusion matrix.
+
+### Balanced Accuracy Calculation
+
+```{r}
+TP <- conf_matrix$table[2, 2]
+FN <- conf_matrix$table[2, 1]
+TN <- conf_matrix$table[1, 1]
+FP <- conf_matrix$table[1, 2]
+
+sensitivity <- TP / (TP + FN)
+specificity <- TN / (TN + FP)
+balanced_accuracy <- (sensitivity + specificity) / 2
+
+cat("Balanced Accuracy on Test Data:", balanced_accuracy, "\n")
+```
+
+The model achieves a balanced accuracy of 0.83 on the test set, indicating strong overall performance on this imbalanced dataset. The sensitivity (97.89%) is high, showing the model is effective at identifying the majority class. However, specificity (44.44%) is lower, reflecting challenges in correctly classifying the minority class.
+
+Using a variance threshold of 0.05 reduced the features to 1,194, enabling significant dimensionality reduction. Lower thresholds (e.g., 0.01 or 0.02) resulted in NaN balanced accuracy, demonstrating the trade-off between stability and the number of features selected.
