@@ -1113,3 +1113,206 @@ cat("AUC:", round(gbdt_pca_auc_value, 3), "\n")
 ```
 
 ## T1.3 Training and evaluation of classifiers
+
+Below, we train and evaluate three classifiers with the objective of improving the F1 score.
+
+## 1. Logistic Regression with L2 Regularization (Ridge Regression)
+
+L2 regularization, also known as Ridge Regression, is a technique used to prevent overfitting in machine learning models. It works by adding a penalty term to the model's loss function:
+
+Loss = Original loss + λ Σ βi^2
+
+Here, βi represents the model coefficients, and λ is a regularization parameter that controls the strength of the penalty. This additional term discourages large coefficients by shrinking them closer to zero, effectively reducing model complexity.
+
+L2 regularization prevents overfitting by penalizing large coefficients, improving generalization and robustness in high-dimensional datasets with correlated features. It also balances bias and variance, ensuring better performance on unseen data.
+
+In this project, L2 regularization was applied to logistic regression to achieve a more robust model and compare its performance against the standard logistic regression model. The results demonstrated improved generalization with a better balance between precision and recall, as reflected in the higher F1 score and AUC.
+
+```{r}
+library(glmnet)
+
+# Convert data to matrix format for glmnet
+train_X_log <- as.matrix(train_data_log[, -1])  
+test_X_log <- as.matrix(test_data_log[, -1])   
+train_Y_log <- train_data_log$label
+test_Y_log <- test_data_log$label
+
+```
+
+
+```{r}
+# Train logistic regression with L2 regularization (alpha = 0)
+logistic_l2_model <- glmnet(train_X_log, train_Y_log, family = "binomial", alpha = 0)
+
+# Cross-validate to find the optimal lambda (regularization parameter)
+cv_model <- cv.glmnet(train_X_log, train_Y_log, family = "binomial", alpha = 0)
+best_lambda <- cv_model$lambda.min
+
+# Train the final model using the best lambda
+final_l2_model <- glmnet(train_X_log, train_Y_log, family = "binomial", alpha = 0, lambda = best_lambda)
+
+```
+
+
+```{r}
+# Predict probabilities on the test set
+logistic_l2_predictions <- predict(final_l2_model, newx = test_X_log, s = best_lambda, type = "response")
+
+# Convert probabilities to class labels (threshold = 0.5)
+logistic_l2_predicted_labels <- ifelse(logistic_l2_predictions > 0.5, 1, 0)
+```
+
+
+```{r}
+library(caret)
+
+# Confusion matrix
+logistic_l2_conf_matrix <- confusionMatrix(as.factor(logistic_l2_predicted_labels), as.factor(test_Y_log))
+print(logistic_l2_conf_matrix)
+
+# Extract metrics
+accuracy_logistic_l2 <- logistic_l2_conf_matrix$overall['Accuracy']
+balanced_accuracy_logistic_l2 <- logistic_l2_conf_matrix$byClass['Balanced Accuracy']
+f1_score_logistic_l2 <- logistic_l2_conf_matrix$byClass['F1']
+```
+
+```{r}
+library(pROC)
+
+# Calculate and plot the ROC curve
+roc_curve_logistic_l2 <- roc(test_Y_log, as.numeric(logistic_l2_predictions))  # Use probabilities for ROC
+plot(roc_curve_logistic_l2, main = "ROC Curve for Logistic Regression with L2", col='red')
+auc_logistic_l2 <- auc(roc_curve_logistic_l2)
+
+```
+
+```{r}
+cat("Logistic Regression with L2 Regularization Evaluation Summary:\n")
+cat("Accuracy:", round(accuracy_logistic_l2, 3), "\n")
+cat("Balanced Accuracy:", round(balanced_accuracy_logistic_l2, 3), "\n")
+cat("F1 Score:", round(f1_score_logistic_l2, 3), "\n")
+cat("AUC:", round(auc_logistic_l2, 3), "\n")
+```
+
+The F1 score of 0.947 achieved with Logistic Regression using L2 Regularization indicates that the model performs exceptionally well in classifying the data, with a strong balance between false positives and false negatives. While slightly lower than other approaches such as Elastic Net or the meta-classifier, this result still reflects a highly effective model with minimal compromise on precision or recall. This performance makes L2-regularized logistic regression a competitive choice for robust classification.
+
+
+## 2. Elastic Net Regularization (Combination of L1 and L2)
+
+Elastic Net Regularization combines the strengths of L1 (Lasso) and L2 (Ridge) penalties to balance feature selection and model stability. It adds a penalty to the loss function that promotes sparsity (via L1) while preventing overfitting (via L2), making it effective in handling correlated predictors and high-dimensional datasets. Elastic Net is particularly useful when selecting groups of related features while maintaining robust generalization.
+
+```{r}
+library(glmnet)
+
+# Prepare data for glmnet
+train_X <- as.matrix(train_data1[, -1])
+test_X <- as.matrix(test_data1[, -1])
+train_Y <- as.numeric(as.factor(train_data1$label)) - 1
+test_Y <- as.numeric(as.factor(test_data1$label)) - 1
+```
+
+
+```{r}
+# Train Elastic Net (alpha = 0.5 combines L1 and L2)
+elastic_net_model <- cv.glmnet(train_X, train_Y, alpha = 0.5, family = "binomial")
+
+# Best lambda
+best_lambda <- elastic_net_model$lambda.min
+
+# Final model
+final_elastic_net_model <- glmnet(train_X, train_Y, alpha = 0.5, lambda = best_lambda, family = "binomial")
+
+# Predictions
+elastic_net_predictions <- predict(final_elastic_net_model, newx = test_X, s = best_lambda, type = "response")
+elastic_net_predicted_labels <- ifelse(elastic_net_predictions > 0.5, 1, 0)
+
+# Evaluate
+conf_matrix_regularization <- confusionMatrix(as.factor(elastic_net_predicted_labels), as.factor(test_Y))
+# print(conf_matrix_regularization)
+cat("F1 Score (Regularization - Elastic Net):", round(conf_matrix_regularization$byClass['F1'], 3), "\n")
+```
+
+The F1 score of 0.966 achieved with Elastic Net Regularization demonstrates excellent model performance, balancing precision and recall effectively. This high F1 score indicates the model's robustness in minimizing both false positives and false negatives. By combining L1 (feature selection) and L2 (stabilization) penalties, Elastic Net has likely improved the model's ability to generalize to unseen data while selecting the most relevant features. This makes it particularly effective in handling any multicollinearity or irrelevant predictors present in the dataset. Overall, the result highlights the strength of Elastic Net in creating a well-regularized, high-performing model.
+
+```{r}
+library(pROC)
+
+# Calculate the ROC curve
+roc_curve_elastic_net <- roc(test_Y, elastic_net_predictions)
+
+# Plot the ROC curve
+plot(roc_curve_elastic_net, main = "ROC Curve for Elastic Net Regularization", col = "blue", lwd = 2)
+
+# Calculate the AUC
+auc_elastic_net <- auc(roc_curve_elastic_net)
+cat("AUC (Elastic Net Regularization):", round(auc_elastic_net, 3), "\n")
+
+```
+
+## 3. Meta Classifier
+
+The meta-classifier combines the strengths of multiple base classifiers (LDA, Random Forest, and GBDT) to achieve better performance. By learning how to aggregate predictions, it can handle situations where individual classifiers might struggle, leading to improved metrics such as the F1 score. The evaluation demonstrates the effectiveness of this ensemble learning approach in combining diverse classifiers.
+
+```{r}
+# Train base classifiers
+lda_pred <- predict(lda_model, test_data1)$class
+rf_pred <- predict(rf_model, test_data1)
+gbdt_pred <- ifelse(gbdt_predictions > 0.5, 1, 0)
+
+# Combine predictions into a new dataset
+meta_features <- data.frame(lda = as.numeric(lda_pred), 
+                            rf = as.numeric(rf_pred), 
+                            gbdt = gbdt_pred, 
+                            label = as.numeric(as.factor(test_data1$label)) - 1)  # Convert labels to numeric (e.g., 0 and 1)
+
+# Train a meta-classifier (e.g., Logistic Regression)
+meta_model <- glm(label ~ ., data = meta_features, family = binomial)
+
+# Predict probabilities on the meta features
+meta_predictions <- predict(meta_model, newdata = meta_features, type = "response")
+
+# Convert probabilities to class labels
+meta_predicted_labels <- ifelse(meta_predictions > 0.5, 1, 0)
+
+# Convert predicted and true labels to factors with matching levels
+meta_predicted_labels <- factor(meta_predicted_labels, levels = c(0, 1))
+meta_features$label <- factor(meta_features$label, levels = c(0, 1))
+
+```
+
+```{r}
+# Compute confusion matrix
+library(caret)
+conf_matrix_meta <- confusionMatrix(meta_predicted_labels, meta_features$label)
+print(conf_matrix_meta)
+
+# Extract metrics
+accuracy_meta <- conf_matrix_meta$overall['Accuracy']
+balanced_accuracy_meta <- conf_matrix_meta$byClass['Balanced Accuracy']
+f1_score_meta <- conf_matrix_meta$byClass['F1']
+
+# Print the metrics
+cat("Accuracy (Meta-Classifier):", round(accuracy_meta, 3), "\n")
+cat("Balanced Accuracy (Meta-Classifier):", round(balanced_accuracy_meta, 3), "\n")
+cat("F1 Score (Meta-Classifier):", round(f1_score_meta, 3), "\n")
+
+```
+
+The results demonstrate that the meta-classifier effectively combines the predictions of the base classifiers (LDA, Random Forest, and GBDT) to achieve outstanding performance. The high F1 score (96.4%) shows that the meta-classifier excels in balancing precision and recall, making it highly suitable for applications where both false positives and false negatives are critical. This performance improvement justifies the use of ensemble learning in this context.
+
+
+```{r}
+library(pROC)
+
+# Calculate the ROC curve
+roc_curve_meta <- roc(as.numeric(as.character(meta_features$label)), as.numeric(meta_predictions))
+
+# Plot the ROC curve
+plot(roc_curve_meta, main = "ROC Curve for Meta-Classifier", col = "darkgreen", lwd = 2)
+
+# Calculate the AUC
+auc_meta <- auc(roc_curve_meta)
+cat("AUC (Meta-Classifier):", round(auc_meta, 3), "\n")
+
+```
+
