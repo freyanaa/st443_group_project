@@ -997,3 +997,165 @@ cat("Balanced Accuracy on Test Data:", balanced_accuracy, "\n")
 The model achieves a balanced accuracy of 0.83 on the test set, indicating strong overall performance on this imbalanced dataset. The sensitivity (97.89%) is high, showing the model is effective at identifying the majority class. However, specificity (44.44%) is lower, reflecting challenges in correctly classifying the minority class.
 
 Using a variance threshold of 0.05 reduced the features to 1,194, enabling significant dimensionality reduction. Lower thresholds (e.g., 0.01 or 0.02) resulted in NaN balanced accuracy, demonstrating the trade-off between stability and the number of features selected.
+
+#Gradient Boosting 
+
+Gradient Boosting is a technique that builds models sequentially by combining multiple weak learners, typically decision trees, to create a strong predictive model. Each tree corrects the errors of the previous one by focusing on minimizing a specific loss function (e.g., Mean Squared Error or Log Loss) using gradient descent. This process improves predictions by fitting new models to the residuals of the previous models, making it highly effective for regression and classification tasks.
+
+```{r}
+# Loading the required libraries
+library(caret)       
+library(gbm)         
+library(dplyr)       
+```
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+#Splitting data into training and testing sets (80-20 split)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+GBtrain_data <- MLData_Task2[train_indices, ]
+GBtest_data <- MLData_Task2[-train_indices, ]
+
+# Ensure labels are factors with two levels for classification
+GBtrain_data$label <- factor(GBtrain_data$label, levels = c(-1, 1), labels = c("Class1", "Class2"))
+GBtest_data$label <- factor(GBtest_data$label, levels = c(-1, 1), labels = c("Class1", "Class2"))
+```
+
+```{r}
+# Remove non-numeric columns before variance calculation
+numeric_features <- sapply(GBtrain_data[, -ncol(GBtrain_data)], is.numeric)  # Exclude label column
+GBtrain_data_numeric <- GBtrain_data[, numeric_features]
+```
+
+
+### Feature pre-selection - Variance threshold:
+
+- Filters out features with low variance (< 0.05), as they contribute little predictive power.
+- The threshold 0.05 reduces dimensions to ~1,194 features, balancing computational feasibility and information retention.
+```{r}
+# Calculating variance of numeric features
+variance_threshold <- 0.05  
+feature_variances <- apply(GBtrain_data_numeric, 2, var, na.rm = TRUE)  
+
+# Select features with variance above the threshold
+selected_features <- names(feature_variances[feature_variances > variance_threshold])
+cat("Number of features retained after variance threshold:", length(selected_features), "\n")
+```
+
+```{r}
+selected_features <- intersect(selected_features, colnames(GBtrain_data))
+
+# Filtering datasets to include only selected features and the label
+GBtrain_data_filtered <- GBtrain_data[, c(selected_features, "label")]
+GBtest_data_filtered <- GBtest_data[, c(selected_features, "label")]
+
+# Verifying the filtered dataset dimensions
+cat("Filtered training dataset dimensions:", dim(GBtrain_data_filtered), "\n")
+cat("Filtered testing dataset dimensions:", dim(GBtest_data_filtered), "\n")
+```
+
+### Custom Balanced Accuracy Function
+
+- Calculates the balanced accuracy metric, which is the average of sensitivity (recall for the positive class) and specificity (recall for the negative class).
+- This metric is crucial for imbalanced datasets, providing a fair assessment of the model performance across both classes.
+
+```{r}
+balanced_accuracy <- function(predictions, true_labels) {
+  # Confusion matrix components
+  TP <- sum(predictions == "Class2" & true_labels == "Class2")
+  TN <- sum(predictions == "Class1" & true_labels == "Class1")
+  FP <- sum(predictions == "Class2" & true_labels == "Class1")
+  FN <- sum(predictions == "Class1" & true_labels == "Class2")
+  
+  # Sensitivity and Specificity
+  sensitivity <- ifelse((TP + FN) > 0, TP / (TP + FN), 0)
+  specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), 0)
+  
+  # Balanced Accuracy
+  balanced_acc <- (sensitivity + specificity) / 2
+  return(balanced_acc)
+}
+
+custom_summary <- function(data, lev = NULL, model = NULL) {
+  # Extracting true labels and predictions
+  predictions <- data$pred
+  true_labels <- data$obs
+  
+  # Computing the Balanced Accuracy
+  balanced_acc <- balanced_accuracy(predictions, true_labels)
+  
+  
+  return(c(BalancedAccuracy = balanced_acc))
+}
+```
+
+###Train Control Setup
+```{r}
+# Step 3: Cross-Validation and Tuning
+GBtrain_control <- trainControl(
+  method = "cv",                    
+  number = 5,                       
+  summaryFunction = custom_summary, 
+  classProbs = FALSE                
+)
+```
+
+- Specifies 5-fold cross-validation for training.
+- Uses the custom (custom_summary) function to evaluate model performance during cross-validation.
+
+#Tune grid set up 
+
+Defining a grid of hyperparameter combinations for tuning the Model. It specifies various values for key parameters:learning rate, number of trees, maximum tree depth minimum observations required in a terminal node. The result is a comprehensive set of parameter combinations to optimize the model's performance during training.
+```{r}
+GBtune_grid <- expand.grid(
+ shrinkage = c(0.01, 0.03, 0.05, 0.1,0.2),  
+  n.trees = 100,     
+  interaction.depth = c(3, 5, 7),         
+  n.minobsinnode = c(5, 10)           
+)
+```
+
+#Training the Gradient Booosting Model
+```{r}
+weights <- ifelse(GBtrain_data_filtered$label == "Class2", 1.5, 1)
+gbm_tuned_model <- train(
+  label ~ .,
+  data = GBtrain_data_filtered,
+  method = "gbm",
+  weights = weights,
+  trControl = GBtrain_control,
+  tuneGrid = GBtune_grid,
+  metric = "BalancedAccuracy",
+  verbose = FALSE
+)
+
+# Printing the best model parameters
+cat("Best Model Parameters:\n")
+print(gbm_tuned_model$bestTune)
+```
+
+-Training the model on the filtered data with weights to handle class imbalance, prioritizing "Class2" by assigning it a higher weight of 1.5. 
+
+-It optimizes the model using a grid of hyperparameters and evaluates performance based on balanced accuracy, then outputs the best hyperparameter combination.
+
+#Evaluating on the test data 
+```{r}
+# Predict class labels
+test_class_predictions <- predict(gbm_tuned_model, newdata = GBtest_data_filtered)
+
+# Confusion Matrix
+conf_matrix <- confusionMatrix(test_class_predictions, GBtest_data_filtered$label)
+cat("Confusion Matrix:\n")
+print(conf_matrix)
+```
+
+Predicting the test set labels and evaluating the model performance using a confusion matrix
+
+# Computing the Balanced Accuracy on test data
+```{r}
+test_balanced_acc <- balanced_accuracy(test_class_predictions, GBtest_data_filtered$label)
+cat("Test Balanced Accuracy:", test_balanced_acc, "\n")
+```
+The model achieves a balanced accuracy of 0.6944 on the test set, indicating moderate overall performance on the imbalanced dataset. The sensitivity is high, showing effectiveness in identifying the majority class, while specificity is  lower, reflecting challenges in correctly classifying the minority class.
