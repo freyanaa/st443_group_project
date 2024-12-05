@@ -992,6 +992,90 @@ The model achieves a balanced accuracy of 0.83 on the test set, indicating stron
 Using a variance threshold of 0.05 reduced the features to 1,194, enabling significant dimensionality reduction. Lower thresholds (e.g., 0.01 or 0.02) resulted in NaN balanced accuracy, demonstrating the trade-off between stability and the number of features selected.
 
 
+### SVM with RFE
+
+RFE (Recursive Feature Elimination) is a feature selection technique that iteratively builds models, removes the least important features, and re-trains the model. Support Vector Machines is an effective classifier in high dimensions and it reduces the risk of overfitting. Together SVM and RFE retains high classification performance by focusing on the most discriminative features while improving the model efficiency.
+
+```{r}
+library(caret)
+library(e1071)
+
+# Random split (80% training, 20% testing)
+set.seed(123)
+train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
+
+# Create training and testing datasets
+train2_data <- MLData_Task2[train_indices, ]
+test2_data <- MLData_Task2[-train_indices, ]
+
+# Prepare data
+train_X <- as.matrix(train2_data[, -1]) # Exclude label column
+test_X <- as.matrix(test2_data[, -1]) # Exclude label column
+train_Y <- factor(train2_data$label, levels = c(-1, 1), labels = c(0, 1))
+test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
+
+# Verify split
+cat("Training set size:", nrow(train2_data), "\n")
+cat("Test set size:", nrow(test2_data), "\n")
+```
+
+```{r}
+# Calculate the variance of each feature
+SVMfeature_variances <- apply(train_X, 2, var)
+
+# Identify features with variance >= 0.01
+SVMselected_features <- which(SVMfeature_variances >= 0.01)
+
+# Print the number of features removed
+cat("Number of features removed:", ncol(train_X) - length(SVMselected_features), "\n")
+cat("Number of features retained:", length(SVMselected_features), "\n")
+
+# Apply on training and test dataset
+SVMtrain_X <- train_X[, SVMselected_features]
+SVMtest_X <- test_X[, SVMselected_features]
+
+
+```
+```{r}
+# Standardize the features by centering and scaling 
+preProcValues <- preProcess(SVMtrain_X, method = c("center", "scale"))
+SVMtrain_X <- predict(preProcValues, SVMtrain_X)
+SVMtest_X <- predict(preProcValues, SVMtest_X)
+```
+
+
+```{r}
+# Set up training control with cross-validation
+ctrl <- rfeControl(functions=rfFuncs, method="cv", number=10)
+
+# Run RFE with SVM model with different sizes to determine the best number of features
+svm_rfe <- rfe(SVMtrain_X, train_Y, sizes=c(10, 20, 30, 40, 50), 
+               rfeControl=ctrl, method="svmLinear")
+print(svm_rfe)
+```
+Size 30 was selected because it has the highest accuracy at 0.9391. See all the accuracy values above. 
+
+```{r}
+# Get the optimal subset of features based on RFE
+selected_features <- svm_rfe$optVariables
+print(selected_features)
+
+# Subset the training and test data to include only the selected features
+X_train_selected <- SVMtrain_X[, selected_features]
+X_test_selected <- SVMtest_X[, selected_features]
+```
+Above are the 30 features that were selected. 
+
+
+```{r}
+# Evaluate the model using balanced accuracy
+conf_matrix <- confusionMatrix(y_pred, test_Y)
+print(conf_matrix)
+balanced_accuracy <- conf_matrix$byClass["Balanced Accuracy"]
+print(paste("SVM with RFE Balanced Accuracy: ", balanced_accuracy))
+
+```
+=======
 #Gradient Boosting 
 
 Gradient Boosting is a technique that builds models sequentially by combining multiple weak learners, typically decision trees, to create a strong predictive model. Each tree corrects the errors of the previous one by focusing on minimizing a specific loss function (e.g., Mean Squared Error or Log Loss) using gradient descent. This process improves predictions by fitting new models to the residuals of the previous models, making it highly effective for regression and classification tasks.
