@@ -5,6 +5,23 @@ editor_options:
   chunk_output_type: inline
 ---
 
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(patchwork)
+library(MASS)
+library(caret)
+library(pROC)
+library(class)
+library(randomForest)
+library(e1071)
+library(glmnet)
+library(questionr)
+library(klaR)
+library(gbm)
+```
+
 # ST443 Group Project
 
 # Task 1: Binary classification
@@ -40,20 +57,19 @@ No infinite values.
 
 ### Balance / share of different celltypes in dataset
 
-We first create a new column that assigns each celltype (CD4+T and TREG) a numerical value, such that we can calculate statistics that are interesting to us with respect to each different celltype.
+To understand the distribution of cell types in the dataset, we first calculate the frequency and proportion of each label:
 
 ```{r}
-RNAdata$label <- as.numeric(factor(RNAdata$label))
 table(RNAdata$label)
+
 table(RNAdata$label) / nrow(RNAdata)
 ```
 
-We find that the dataset contains 3356 (\~61.34%) CD4+T cells (numerical value = 1) and 2115 (38.65%) TREG cells (numerical value = 2).
+The dataset consists of 3356 CD4+T cells (61.34%) and 2115 TREG cells (38.65%).
 
 To visualize this distribution, we generated a bar plot.
 
 ```{r}
-# Load ggplot2 library for plotting
 library(ggplot2)
 
 # Create a table of class counts
@@ -78,16 +94,21 @@ As seen in the plot, there is a class imbalance, with CD4+T cells being more pre
 Now we generate a new dataset that contains the mean and variance of each gene's expression across cells and for each celltype individually. This will help us later understand the significance of certain gene expression levels for the different celltypes.
 
 ```{r}
+# Compute gene statistics
 gene_stats <- data.frame(
   Mean = colMeans(RNAdata[,-1], na.rm = TRUE),
   Variance = apply(RNAdata[,-1], 2, var, na.rm = TRUE),
-# Subset for CD4+T cells
-  Mean_CD4 = colMeans(RNAdata[RNAdata$label == 1, -1], na.rm = TRUE),
-  Variance_CD4 = apply(RNAdata[RNAdata$label == 2, -1], 2, var, na.rm = TRUE),
+  
+  # Subset for CD4+T cells (assuming label column is named `label`)
+  Mean_CD4 = colMeans(RNAdata[RNAdata$label == "CD4+T", -1], na.rm = TRUE),
+  Variance_CD4 = apply(RNAdata[RNAdata$label == "CD4+T", -1], 2, var, na.rm = TRUE),
+  
   # Subset for TREG cells
-  Mean_TREG = colMeans(RNAdata[RNAdata$label == 1, -1], na.rm = TRUE),
-  Variance_TREG = apply(RNAdata[RNAdata$label == 2, -1], 2, var, na.rm = TRUE)
+  Mean_TREG = colMeans(RNAdata[RNAdata$label == "TREG", -1], na.rm = TRUE),
+  Variance_TREG = apply(RNAdata[RNAdata$label == "TREG", -1], 2, var, na.rm = TRUE)
 )
+
+# View the gene statistics
 View(gene_stats)
 ```
 
@@ -102,49 +123,52 @@ max_values <- apply(RNAdata[,-1], 2, max)
 
 # Combine the results into a data frame
 min_max_values <- data.frame(
-  Gene = colnames(RNAdata[,-1]),
-  Minimum = min_values,
-  Maximum = max_values
+  Gene = colnames(RNAdata[,-1]),  # Gene names
+  Minimum = min_values,                 # Minimum values
+  Maximum = max_values                  # Maximum values
 )
 
 
 View(min_max_values)
 ```
 
+
 ### Understand Gene Expression patterns
 
 To understand the Gene Expression patterns we create histograms for a few genes. To understand whether the gene expression patterns are inherently different for the two celltypes, we use the subsets of data for each celltype and compare the histograms.
 
 ```{r}
-# Create subsets
-CD4_data <- subset(RNAdata, label == 1)
-TREG_data <- subset(RNAdata, label == 2)
+# Subset the data for CD4+T and TREG cells
+CD4_data <- subset(RNAdata, label == "CD4+T")
+TREG_data <- subset(RNAdata, label == "TREG")
 
-# Pick 4 genes at random
+# Select 4 genes at random (excluding the label column)
 gene_columns <- colnames(RNAdata)[-1]
 random_genes <- sample(gene_columns, 4)
 
+# Set up the plotting layout
 par(mfrow = c(4, 3), mar = c(4, 4, 2, 1)) 
 
+# Loop through the randomly selected genes and plot histograms
 for (gene in random_genes) {
   
-  # Histogram for gene over all celltypes
+  # Histogram for gene across all cell types
   hist(RNAdata[[gene]],
        main = paste("All Cells -", gene),
        xlab = "Expression",
        col = "blue",
        breaks = 20)
   
-  # Histogram for gene over CD4+T cells
+  # Histogram for gene across CD4+T cells
   hist(CD4_data[[gene]],
        main = paste("CD4+T -", gene),
        xlab = "Expression",
        col = "green",
        breaks = 20)
 
-  # Histogram for gene over TREG cells
+  # Histogram for gene across TREG cells
   hist(TREG_data[[gene]],
-       main = paste("TREG - ", gene),
+       main = paste("TREG -", gene),
        xlab = "Expression",
        col = "yellow",
        breaks = 20)
@@ -158,19 +182,22 @@ We can see that there is no significant difference in the distribution of the ex
 The code below generates density plots for the expression levels of randomly selected genes. This helps visualize the distribution of RNA expression for each gene across the two cell types (CD4+T and TREG).
 
 ```{r}
+
 # Randomly select 5 genes for visualization
 set.seed(Sys.time())  # Set a random seed for reproducibility
 selected_genes <- sample(colnames(RNAdata[,-1]), 5)
 
-# Loop through the selected genes and create density plots
-for (gene in selected_genes) {
-  p <- ggplot(RNAdata, aes(x = .data[[gene]], fill = label)) +  # Use full RNAdata with `label`
-    geom_density(alpha = 0.5) +
-    labs(title = paste("Density Plot for Gene:", gene), x = "Expression Level", y = "Density") +
-    theme_minimal()
-  
-  print(p)  # Explicitly print each plot
-}
+# Create a long-format data frame for ggplot
+RNAdata_long <- RNAdata %>%
+  pivot_longer(cols = all_of(selected_genes), names_to = "Gene", values_to = "Expression")
+
+# Generate the combined density plot
+ggplot(RNAdata_long, aes(x = Expression, fill = label)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ Gene, scales = "free") +
+  labs(title = "Density Plots for Selected Genes", x = "Expression Level", y = "Density") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 ```
 
 The density plots for most genes reveal highly overlapping distributions for CD4+T and TREG cells, suggesting that many genes do not exhibit significant differential expression between the two cell types. This overlap implies that these genes may not be strong discriminators for classification and might be less relevant for building effective predictive models. Such observations underscore the importance of identifying key genes or features that show greater separation between the classes, as they are likely to contribute more meaningfully to the task of binary classification.
@@ -182,22 +209,24 @@ The scatter plots also helps us visualize the expression levels of randomly sele
 ```{r}
 # Randomly select 2 pairs of genes for scatter plots
 set.seed(Sys.time())
-selected_genes <- sample(colnames(RNAdata[,-1]), 4)
+selected_genes <- sample(colnames(RNAdata[, -1]), 4)
 
 # Create scatter plots for the selected pairs
-library(ggplot2)
-ggplot(RNAdata, aes(x = .data[[selected_genes[1]]], y = .data[[selected_genes[2]]], color = label)) +
+scatter_plot1 <- ggplot(RNAdata, aes(x = .data[[selected_genes[1]]], y = .data[[selected_genes[2]]], color = label)) +
   geom_point(alpha = 0.7) +
   labs(title = paste("Scatter Plot:", selected_genes[1], "vs", selected_genes[2]), 
        x = selected_genes[1], y = selected_genes[2]) +
   theme_minimal()
 
-ggplot(RNAdata, aes(x = .data[[selected_genes[3]]], y = .data[[selected_genes[4]]], color = label)) +
+scatter_plot2 <- ggplot(RNAdata, aes(x = .data[[selected_genes[3]]], y = .data[[selected_genes[4]]], color = label)) +
   geom_point(alpha = 0.7) +
   labs(title = paste("Scatter Plot:", selected_genes[3], "vs", selected_genes[4]), 
        x = selected_genes[3], y = selected_genes[4]) +
   theme_minimal()
 
+# Combine the two scatter plots into one
+combined_scatter_plots <- scatter_plot1 + scatter_plot2  # Combine plots with patchwork
+print(combined_scatter_plots)
 ```
 
 The significant overlap in distributions between CD4+T and TREG cells indicates that these gene pairs may not be highly informative for distinguishing the two classes. This highlights the importance of identifying gene pairs or combinations with stronger class separation for effective feature selection and classification.
@@ -214,19 +243,7 @@ We get that 66.17% of our entries are nullvalues, meaning that our data is very 
 
 ## T1.2 Training and evaluation of classifiers
 
-### Load Necessary Libraries
-```{r}
-# Loading necessary libraries
-library(MASS)
-library(caret)
-library(pROC)
-library(klaR)
-library(randomForest)
-library(class)
-library(e1071)
-library(gbm)
-```
-
+## T1.2 Training and evaluation of classifiers
 
 ### Split data into Train and Test data
 
@@ -238,9 +255,13 @@ set.seed(123)
 sample_index <- createDataPartition(RNAdata$label, p = 0.8, list = FALSE)
 train_data1 <- RNAdata[sample_index, ]
 test_data1 <- RNAdata[-sample_index, ]
+
+# Ensure the label column is a factor
+train_data1$label <- as.factor(train_data1$label)
+test_data1$label <- as.factor(test_data1$label)
 ```
 
-### Linear Discriminant Analysis (LDA)
+# Linear Discriminant Analysis (LDA)
 
 ```{r}
 # Train the LDA model
@@ -249,17 +270,15 @@ lda_model <- lda(label ~ ., data = train_data1)
 
 ```{r}
 # Make predictions on the test data
-lda_predictions <- predict(lda_model, test_data1[,-1])
+lda_predictions <- predict(lda_model, newdata = test_data1)
 lda_predicted_labels <- lda_predictions$class
 ```
 
 ```{r}
 # Confusion matrix
 lda_conf_matrix <- confusionMatrix(lda_predicted_labels, as.factor(test_data1$label))
-lda_conf_matrix
-```
 
-```{r}
+# Extracting specific metrics
 lda_accuracy <- lda_conf_matrix$overall['Accuracy']
 lda_balanced_accuracy <- lda_conf_matrix$byClass['Balanced Accuracy']
 lda_f1_score <- lda_conf_matrix$byClass['F1']
@@ -269,11 +288,15 @@ lda_f1_score <- lda_conf_matrix$byClass['F1']
 # Convert labels to numeric for ROC curve calculation
 lda_probs <- lda_predictions$posterior[, 2]
 
-# Create ROC curve
-lda_roc_curve <- roc(as.factor(test_data1$label), lda_probs)
-plot(lda_roc_curve, col = "pink", main = "ROC Curve for LDA")
+# Create ROC curve 
+lda_roc_curve <- roc(test_data1$label, lda_probs, levels = c("CD4+T", "TREG"), direction = "<")
+plot(lda_roc_curve, col = "red", main = "ROC Curve for LDA")
+
+# Calculate AUC
 lda_auc_value <- auc(lda_roc_curve)
-cat("AUC:", lda_auc_value, "\n")
+
+# Calculate test error for LDA
+lda_test_error <- mean(lda_predicted_labels != test_data1$label)
 ```
 
 ```{r}
@@ -282,19 +305,19 @@ cat("Accuracy:", round(lda_accuracy, 3), "\n")
 cat("Balanced Accuracy:", round(lda_balanced_accuracy, 3), "\n")
 cat("F1 Score:", round(lda_f1_score, 3), "\n")
 cat("AUC:", round(lda_auc_value, 3), "\n")
+cat("Test Error (LDA):", round(lda_test_error, 3), "\n")
 ```
 
-### Logistic Classifier
+# Logistic Classifier
 
 ```{r}
-# Create training (80%) and testing (20%) set for logistic classifer
 train_data_log <- train_data1
 test_data_log <- test_data1
 
 train_data_log$label <- ifelse(train_data_log$label == "TREG", 1, 0)
 test_data_log$label <- ifelse(test_data_log$label == "TREG", 1, 0)
 
-# Train the logistic regression model
+# Train a logistic regression model
 logistic_model <- glm(label ~ ., data = train_data_log, family = binomial)
 ```
 
@@ -306,32 +329,28 @@ logistic_predictions <- predict(logistic_model, test_data_log[, -1], type = "res
 logistic_predicted_labels <- ifelse(logistic_predictions > 0.5, 1, 0)
 ```
 
-```{r}
-# Calculate test error
-logistic_test_error <- mean(logistic_predicted_labels != test_data_log$label)
-
-# Print the test error
-cat("Test Error (Logistic):", round(logistic_test_error, 3), "\n")
-```
 
 ```{r}
 # Confusion matrix
 logistic_conf_matrix <- confusionMatrix(as.factor(logistic_predicted_labels), as.factor(test_data_log$label))
-print(logistic_conf_matrix)
-```
 
-```{r}
+# Extract metrics from the confusion matrix
 accuracy_logistic <- logistic_conf_matrix$overall['Accuracy']
 balanced_accuracy_logistic <- logistic_conf_matrix$byClass['Balanced Accuracy']
 f1_score_logistic <- logistic_conf_matrix$byClass['F1']
 ```
 
+
 ```{r}
 # Calculate and plot the ROC curve
-roc_curve_logistic <- roc(test_data_log$label, logistic_predictions)
+roc_curve_logistic <- roc(test_data_log$label, logistic_predictions)  
 plot(roc_curve_logistic, main = "ROC Curve for Logistic Regression", col='red')
+
+# Calculate AUC
 auc_logistic <- auc(roc_curve_logistic)
-cat("AUC:", auc_logistic, "\n")
+
+# Calculate test error
+logistic_test_error <- mean(logistic_predicted_labels != test_data_log$label)
 ```
 
 ```{r}
@@ -340,82 +359,38 @@ cat("Accuracy:", round(accuracy_logistic, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_logistic, 3), "\n")
 cat("F1 Score:", round(f1_score_logistic, 3), "\n")
 cat("AUC:", round(auc_logistic, 3), "\n")
+cat("Test Error (Logistic):", round(logistic_test_error, 3), "\n")
 ```
 
-### Quadratic Discriminant Analysis (QDA)
+# Quadratic Discriminant Analysis (QDA)
+
+QDA fails in our case due to the high dimensionality of the data (p = 4123) compared to the sample size (n = 5471). Estimating two class-specific covariance matrices in QDA requires p^2 entries per matrix, leading to unreliable and noisy estimates when n << p^2. In contrast, LDA assumes a shared covariance matrix across classes, allowing it to pool all data points for estimation, making it more robust in high-dimensional settings. Due to these limitations, we do not train QDA with the 80-20 split.
+
+# Random Forest
 
 ```{r}
-# Create training (80%) and testing (20%) set for qda
-test_data_factor <- test_data1
-train_data_factor <- train_data1
+library(randomForest)
 
-test_data_factor$label <- factor(test_data_factor$label)
-train_data_factor$label <- factor(train_data_factor$label)
-
-# Train a QDA model (using rda from klaR library to account for the high-dimensional data by introducing a small regularization factor to the covariance matrices, making them invertible even with the few samples available)
-qda_model <- rda(label ~ ., data = train_data_factor, gamma = 0.01, lambda = 0.5)
-```
-
-```{r}
-# Predict the label of the test data
-qda_predictions <- predict(qda_model, test_data_factor[,-1])  # Exclude label column
-qda_predicted_labels <- qda_predictions$class
-```
-
-```{r}
-# Confusion matrix
-qda_conf_matrix <- confusionMatrix(qda_predicted_labels, test_data_factor$label)
-qda_conf_matrix
-```
-
-```{r}
-qda_accuracy <- qda_conf_matrix$overall['Accuracy']
-qda_balanced_accuracy <- qda_conf_matrix$byClass['Balanced Accuracy']
-qda_f1_score <- qda_conf_matrix$byClass['F1']
-```
-
-```{r}
-# Calculate and plot the ROC curve
-roc_curve_qda <- roc(test_data1$label, qda_predictions)  # Use probabilities for ROC
-plot(roc_curve_qda, main = "ROC Curve for QDA", col='red')
-auc_qda <- auc(roc_curve_qda)
-cat("AUC:", auc_qda, "\n")
-```
-
-```{r}
-cat("QDA Model Evaluation Summary:\n")
-cat("Accuracy:", round(qda_accuracy, 3), "\n")
-cat("Balanced Accuracy:", round(qda_balanced_accuracy, 3), "\n")
-cat("F1 Score:", round(qda_f1_score, 3), "\n")
-cat("AUC:", round(qda_auc_value, 3), "\n")
-```
-
-### Random Forest
-
-```{r}
 # Train Random Forest with mtry = sqrt(number of predictors)
 p <- ncol(train_data1) - 1  # Number of predictors (excluding the label column)
 train_data1$label <- as.factor(train_data1$label)
 rf_model <- randomForest(label ~ ., data = train_data1, mtry = round(sqrt(p)), ntree = 500, importance = TRUE)
 
-# Print the model summary
-print(rf_model)
 ```
 
 ```{r}
 # Predictions on the test data
 rf_predictions <- predict(rf_model, test_data1)
 
-# Confusion matrix
+# Evaluating the model with a confusion matrix
 conf_matrix_rf <- confusionMatrix(rf_predictions, as.factor(test_data1$label))
-print(conf_matrix_rf)
-```
 
-```{r}
+# Extracting specific performance metrics
 accuracy_rf <- conf_matrix_rf$overall['Accuracy']
 balanced_accuracy_rf <- conf_matrix_rf$byClass['Balanced Accuracy']
 f1_score_rf <- conf_matrix_rf$byClass['F1']
 ```
+
 
 ```{r}
 # Getting predicted probabilities for "TREG" class
@@ -425,12 +400,13 @@ rf_probs <- predict(rf_model, test_data1, type = "prob")[, 2]
 ```{r}
 # Create ROC curve
 roc_curve_rf <- roc(test_data1$label, rf_probs)
-plot(roc_curve_rf, col = "blue", main = "ROC Curve for Random Forest")
-```
+plot(roc_curve_rf, col = "red", main = "ROC Curve for Random Forest")
 
-```{r}
-#calculating AUC
+# Calculate AUC
 auc_value_rf <- auc(roc_curve_rf)
+
+# Calculate test error
+rf_test_error <- mean(rf_predictions != test_data1$label)
 ```
 
 ```{r}
@@ -439,6 +415,7 @@ cat("Accuracy:", round(accuracy_rf, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_rf, 3), "\n")
 cat("F1 Score:", round(f1_score_rf, 3), "\n")
 cat("AUC:", round(auc_value_rf, 3), "\n")
+cat("Test Error (Random Forest):", round(rf_test_error, 3), "\n")
 ```
 
 ### K-NN
@@ -452,7 +429,10 @@ train_Y <- as.factor(train_data1$label)
 test_Y <- as.factor(test_data1$label)
 ```
 
+
 ```{r}
+## takes a lot of time to run ##
+
 cv_control <- trainControl(method = "cv", number = 10)
 
 # Tuning the knn to try k values from 1 to 20
@@ -461,33 +441,38 @@ knn_tune <- train(train_X, train_Y, method = "knn", trControl = cv_control,
 optimal_k <- knn_tune$bestTune$k
 print(optimal_k)
 
-# optimal k is 19
+# optimal k is 15
 ```
 
 ```{r}
-# Predict probabilities on the test set
-knn_predictions <- predict(knn_tune, test_X)
-knn_probabilities <- predict(knn_tune, test_X, type = "prob")
-```
+# Train and predict using k-NN with k = 15
+optimal_k <- 15
 
-```{r}
+knn_predictions <- knn(train_X, test_X, train_Y, k = optimal_k)
+
 # Confusion matrix
-conf_matrix_knn <- confusionMatrix(knn_predictions, as.factor(test_Y))
-print(conf_matrix_knn)
+conf_matrix_knn <- confusionMatrix(as.factor(knn_predictions), as.factor(test_Y))
 
-#Calculating Accuracy, Balanced Accuracy, F1
-accuracy_knn <- sum(diag(confusion_table)) / sum(confusion_table)
+# Calculate Accuracy, Balanced Accuracy, F1 Score
+accuracy_knn <- conf_matrix_knn$overall["Accuracy"]
 balanced_accuracy_knn <- conf_matrix_knn$byClass["Balanced Accuracy"]
 f1_score_knn <- conf_matrix_knn$byClass["F1"]
 ```
 
 ```{r}
+# Calculate test error
+knn_test_error <- mean(knn_predictions != test_Y)
+
 # AUC Calculation
-knn_roc_obj <- roc(test_Y, knn_probabilities[, 2])
+knn_probabilities <- knn(train_X, test_X, train_Y, k = optimal_k, prob = TRUE)  # Use the prob argument
+knn_probabilities <- ifelse(knn_predictions == "TREG", attr(knn_probabilities, "prob"), 1 - attr(knn_probabilities, "prob"))
+
+knn_roc_obj <- roc(as.numeric(test_Y), knn_probabilities)
 auc_knn <- auc(knn_roc_obj)
 
 # Plot ROC curve
-plot(knn_roc_obj, col = "blue", main = "ROC Curve for KNN")
+plot(knn_roc_obj, col = "red", main = "ROC Curve for k-NN (k=15)")
+
 ```
 
 ```{r}
@@ -496,51 +481,62 @@ cat("Accuracy:", round(accuracy_knn, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_knn, 3), "\n")
 cat("F1 Score:", round(f1_score_knn, 3), "\n")
 cat("AUC:", round(auc_knn, 3), "\n")
+cat("Test Error (k-NN):", round(knn_test_error, 3), "\n")
 ```
 
-### Support Vector Machine (SVM)
+# Support Vector Machine (SVM)
 
 ```{r}
-# Train and test data with label as factors
+# Prepare the data
 test_data_factor <- test_data1
 train_data_factor <- train_data1
 
 test_data_factor$label <- factor(test_data_factor$label)
 train_data_factor$label <- factor(train_data_factor$label)
 
-# Model
-svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear", probability = TRUE)
-svm_predictions <- predict(svm_model, test_data_factor[,-1], probability = TRUE)
-svm_pred_prob <- attr(svm_predictions, "probabilities")[, 2]
+# Train the SVM model
+svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear")
 ```
 
 ```{r}
-# Accuracy
-svm_accuracy <- mean(svm_predictions == test_data_factor$label)
+# Make predictions on the test set
+svm_predictions <- predict(svm_model, test_data_factor[,-1])
 
 # Confusion matrix
 svm_conf_matrix <- confusionMatrix(svm_predictions, test_data_factor$label)
 
-# Balanced accuracy
+# Extract metrics directly from confusionMatrix
+svm_accuracy <- svm_conf_matrix$overall['Accuracy']
 svm_balanced_accuracy <- svm_conf_matrix$byClass['Balanced Accuracy']
+svm_f1_score <- svm_conf_matrix$byClass['F1']
+```
 
-# F1 Score
-svm_f1 <- svm_conf_matrix$byClass['F1']
 
-# ROC Curve & AUC
-svm_roc_curve <- roc(test_data_factor$label, svm_pred_prob)
-plot(svm_roc_curve, main = "ROC Curve", col = "blue", lwd = 2)
+```{r}
+# Calculate test error
+svm_test_error <- mean(svm_predictions != test_data_factor$label)
+
+# Calculate and plot ROC curve 
+svm_decision_values <- predict(svm_model, test_data_factor[,-1], decision.values = TRUE)
+decision_values <- attr(svm_decision_values, "decision.values")
+
+svm_roc_curve <- roc(test_data_factor$label, decision_values, levels = rev(levels(test_data_factor$label)))
+plot(svm_roc_curve, col = "red", main = "ROC Curve for SVM (Decision Values)", lwd = 2)
+
+# Calculate AUC
 svm_auc <- auc(svm_roc_curve)
 ```
+
 ```{r}
-cat("Support Vector Machine Model Evaluation Summary:\n")
+cat("SVM Classifier Summary:\n")
 cat("Accuracy:", round(svm_accuracy, 3), "\n")
 cat("Balanced Accuracy:", round(svm_balanced_accuracy, 3), "\n")
-cat("F1 Score:", round(svm_f1, 3), "\n")
+cat("F1 Score:", round(svm_f1_score, 3), "\n")
 cat("AUC:", round(svm_auc, 3), "\n")
+cat("Test Error:", round(svm_test_error, 3), "\n")
 ```
 
-### Gradient Boosting Decision Tree (GBDT)
+# Gradient Boosting Decision Tree (GBDT)
 
 ```{r}
 ### Tuning - takes a long time to run ***
@@ -618,22 +614,46 @@ gbdt_roc_curve <- roc(test_data_gbdt$label, gbdt_predictions)
 gbdt_auc_value <- auc(gbdt_roc_curve)
 
 # ROC Curve
-plot.roc(gbdt_roc_curve, main = "GBDT ROC Curve", col = "blue", lwd = 2)
+plot.roc(gbdt_roc_curve, main = "GBDT ROC Curve", col = "red", lwd = 2)
 
+# Calculate test error
+gbdt_test_error <- mean(gbdt_predictions_class != test_data_gbdt$label)
 ```
+
 ```{r}
 cat("Gradient Boosting Decision Trees Model Evaluation Summary:\n")
 cat("Accuracy:", round(gbdt_accuracy, 3), "\n")
 cat("Balanced Accuracy:", round(gbdt_balanced_accuracy, 3), "\n")
 cat("F1 Score:", round(gbdt_f1_score, 3), "\n")
 cat("AUC:", round(gbdt_auc_value, 3), "\n")
+cat("Test Error:", round(gbdt_test_error, 3), "\n")
 ```
 
 
-### PCA with 10 components
+### ROC Curves
+```{r}
+# Plot ROC Curves for Multiple Classifiers
+plot(roc_curve_logistic, col = "blue", lwd = 2, main = "ROC Curves for Multiple Classifiers")
+plot(lda_roc_curve, col = "red", lwd = 2, add = TRUE)
+plot(knn_roc_obj, col = "green", lwd = 2, add = TRUE)
+plot(svm_roc_curve, col = "purple", lwd = 2, add = TRUE)
+plot(gbdt_roc_curve, col = "orange", lwd = 2, add = TRUE)
+plot(roc_curve_rf, col = "brown", lwd = 2, add = TRUE)
+
+# Add a diagonal line (chance level)
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+# Add legend
+legend("bottomright",
+       legend = c("Logistic Regression", "LDA", "k-NN", "SVM", "GBDT", "Random Forest"),
+       col = c("blue", "red", "green", "purple", "orange", "brown"),
+       lwd = 2, cex = 0.6)
+```
+
+
+### PCA with 10 components ###
 
 Split the data:
-
 ```{r}
 # Perform PCA on the training data (excluding the label column)
 pca <- prcomp(train_data1[, -1], scale. = TRUE)
@@ -643,14 +663,12 @@ train_pca <- data.frame(label = train_data1$label, pca$x[, 1:10])
 test_pca <- data.frame(label = test_data1$label, predict(pca, test_data1[, -1])[, 1:10])
 ```
 
-### LDA with PCA
+
+### LDA with PCA 
 
 ```{r}
 # Train the LDA model on the PCA-transformed training data
 lda_pca_model <- lda(label ~ ., data = train_pca)
-
-# Print the LDA model summary
-summary(lda_pca_model)
 ```
 
 ```{r}
@@ -658,34 +676,21 @@ summary(lda_pca_model)
 lda_pca_predictions <- predict(lda_pca_model, test_pca)
 
 # Confusion matrix
-
 conf_matrix_pca <- confusionMatrix(as.factor(lda_pca_predictions$class), as.factor(test_pca$label))
-print(conf_matrix_pca)
 
-# Calculate test error
-lda_pca_test_error <- mean(lda_pca_predictions$class != test_pca$label)
-cat("LDA PCA Test Error:", round(lda_pca_test_error, 3), "\n")
-
-```
-
-```{r}
 # Extract metrics from the confusion matrix
 accuracy_lda_pca <- conf_matrix_pca$overall['Accuracy']
 balanced_accuracy_lda_pca <- conf_matrix_pca$byClass['Balanced Accuracy']
 f1_score_lda_pca <- conf_matrix_pca$byClass['F1']
-
-# Print the metrics
-cat("Accuracy (LDA with PCA):", accuracy_lda_pca, "\n")
-cat("Balanced Accuracy (LDA with PCA):", balanced_accuracy_lda_pca, "\n")
-cat("F1 Score (LDA with PCA):", f1_score_lda_pca, "\n")
 ```
 
 ```{r}
 # Calculate and plot the ROC curve
 roc_curve_pca <- roc(test_pca$label, as.numeric(lda_pca_predictions$class), levels = c("TREG", "CD4+T"))
 plot(roc_curve_pca, main = "ROC Curve for LDA with PCA", col='red')
+
+# Calculate AUC
 auc_pca <- auc(roc_curve_pca)
-cat("AUC (LDA with PCA):", round(auc_pca, 3), "\n")
 ```
 
 ```{r}
@@ -695,6 +700,8 @@ cat("Balanced Accuracy:", round(balanced_accuracy_lda_pca, 3), "\n")
 cat("F1 Score:", round(f1_score_lda_pca, 3), "\n")
 cat("AUC:", round(auc_pca, 3), "\n")
 ```
+
+
 
 ### Logistic classifier with PCA
 
@@ -706,19 +713,12 @@ test_pca_log <- test_pca
 # Convert 'label' to binary numeric variable
 train_pca_log$label <- ifelse(train_pca_log$label == "TREG", 1, 0)
 test_pca_log$label <- ifelse(test_pca_log$label == "TREG", 1, 0)
-
 ```
 
 ```{r}
 # Train logistic regression on PCA-transformed data
 logistic_pca_model <- glm(label ~ ., data = train_pca_log, family = binomial)
 
-# Print the model summary
-summary(logistic_pca_model)
-
-```
-
-```{r}
 # Predict probabilities on the PCA-transformed test data
 logistic_pca_predictions <- predict(logistic_pca_model, newdata = test_pca_log, type = "response")
 
@@ -727,37 +727,27 @@ logistic_pca_predicted_labels <- ifelse(logistic_pca_predictions > 0.5, 1, 0)
 
 # Calculate test error
 logistic_pca_test_error <- mean(logistic_pca_predicted_labels != test_pca_log$label)
-cat("Test Error (Logistic with PCA):", round(logistic_pca_test_error, 3), "\n")
-
 ```
+
 
 ```{r}
 # Confusion matrix
-
 conf_matrix_pca <- confusionMatrix(as.factor(logistic_pca_predicted_labels), as.factor(test_pca_log$label))
-print(conf_matrix_pca)
 
 # Extract metrics from the confusion matrix
 accuracy_logistic_pca <- conf_matrix_pca$overall['Accuracy']
 balanced_accuracy_logistic_pca <- conf_matrix_pca$byClass['Balanced Accuracy']
 f1_score_logistic_pca <- conf_matrix_pca$byClass['F1']
-
-# Print the metrics
-cat("Accuracy (Logistic with PCA):", accuracy_logistic_pca, "\n")
-cat("Balanced Accuracy (Logistic with PCA):", balanced_accuracy_logistic_pca, "\n")
-cat("F1 Score (Logistic with PCA):", f1_score_logistic_pca, "\n")
-
-
 ```
+
 
 ```{r}
 # Calculate and plot the ROC curve
-
 roc_curve_logistic_pca <- roc(test_pca_log$label, logistic_pca_predictions)
 plot(roc_curve_logistic_pca, main = "ROC Curve for Logistic Regression with PCA", col = 'red')
-auc_logistic_pca <- auc(roc_curve_logistic_pca)
-cat("AUC (Logistic with PCA):", auc_logistic_pca, "\n")
 
+# Calculate AUC
+auc_logistic_pca <- auc(roc_curve_logistic_pca)
 ```
 
 ```{r}
@@ -766,21 +756,14 @@ cat("Accuracy:", round(accuracy_logistic_pca, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_logistic_pca, 3), "\n")
 cat("F1 Score:", round(f1_score_logistic_pca, 3), "\n")
 cat("AUC:", round(auc_logistic_pca, 3), "\n")
-
+cat("Test Error (Logistic with PCA):", round(logistic_pca_test_error, 3), "\n")
 ```
 
 ### QDA with PCA
 
 ```{r}
 # Train a QDA model on the PCA-transformed data
-library(questionr)
-library(klaR)
-
-qda_pca_model <- rda(label ~ ., data = train_pca, gamma = 0.01, lambda = 0.5)
-
-# Print the model summary
-summary(qda_pca_model)
-
+qda_pca_model <- qda(label ~ ., data = train_pca)
 ```
 
 ```{r}
@@ -790,31 +773,21 @@ qda_pca_predicted_labels <- qda_pca_predictions$class
 
 # Confusion matrix
 qda_pca_conf_matrix <- confusionMatrix(as.factor(qda_pca_predicted_labels), as.factor(test_pca$label))
-qda_pca_conf_matrix
 
-```
-
-```{r}
 # Extract metrics from the confusion matrix
 qda_pca_accuracy <- qda_pca_conf_matrix$overall['Accuracy']
 qda_pca_balanced_accuracy <- qda_pca_conf_matrix$byClass['Balanced Accuracy']
 qda_pca_f1_score <- qda_pca_conf_matrix$byClass['F1']
-
-# Print the metrics
-cat("Accuracy (QDA with PCA):", qda_pca_accuracy, "\n")
-cat("Balanced Accuracy (QDA with PCA):", qda_pca_balanced_accuracy, "\n")
-cat("F1 Score (QDA with PCA):", qda_pca_f1_score, "\n")
-
 ```
+
 
 ```{r}
 # Calculate the ROC curve
 qda_pca_roc_curve <- roc(test_pca$label, qda_pca_predictions$posterior[, "TREG"], levels = c("TREG", "CD4+T"))
 plot(qda_pca_roc_curve, main = "ROC Curve for QDA with PCA", col = 'red')
+
+# Calculate AUC
 qda_pca_auc <- auc(qda_pca_roc_curve)
-cat("AUC (QDA with PCA):", round(qda_pca_auc, 3), "\n")
-
-
 ```
 
 ```{r}
@@ -823,14 +796,12 @@ cat("Accuracy:", round(qda_pca_accuracy, 3), "\n")
 cat("Balanced Accuracy:", round(qda_pca_balanced_accuracy, 3), "\n")
 cat("F1 Score:", round(qda_pca_f1_score, 3), "\n")
 cat("AUC:", round(qda_pca_auc, 3), "\n")
-
 ```
 
-### Random Forest with PCA
+
+### Random Forest with PCA 
 
 ```{r}
-library(randomForest)
-
 # Ensure the label column is a factor
 train_pca$label <- as.factor(train_pca$label)
 test_pca$label <- as.factor(test_pca$label)
@@ -838,10 +809,6 @@ test_pca$label <- as.factor(test_pca$label)
 # Train Random Forest on PCA-transformed data
 p <- ncol(train_pca) - 1  # Number of predictors (10 components)
 rf_pca_model <- randomForest(label ~ ., data = train_pca, mtry = round(sqrt(p)), ntree = 500, importance = TRUE)
-
-# Print the model summary
-print(rf_pca_model)
-
 ```
 
 ```{r}
@@ -850,21 +817,11 @@ rf_pca_predictions <- predict(rf_pca_model, test_pca)
 
 # Confusion matrix
 conf_matrix_rf_pca <- confusionMatrix(rf_pca_predictions, test_pca$label)
-print(conf_matrix_rf_pca)
 
-```
-
-```{r}
 # Extract specific performance metrics
 accuracy_rf_pca <- conf_matrix_rf_pca$overall['Accuracy']
 balanced_accuracy_rf_pca <- conf_matrix_rf_pca$byClass['Balanced Accuracy']
 f1_score_rf_pca <- conf_matrix_rf_pca$byClass['F1']
-
-# Print the metrics
-cat("Accuracy (Random Forest with PCA):", round(accuracy_rf_pca, 3), "\n")
-cat("Balanced Accuracy (Random Forest with PCA):", round(balanced_accuracy_rf_pca, 3), "\n")
-cat("F1 Score (Random Forest with PCA):", round(f1_score_rf_pca, 3), "\n")
-
 ```
 
 ```{r}
@@ -877,8 +834,6 @@ plot(roc_curve_rf_pca, col = "red", main = "ROC Curve for Random Forest with PCA
 
 # Calculate AUC
 auc_value_rf_pca <- auc(roc_curve_rf_pca)
-cat("AUC (Random Forest with PCA):", round(auc_value_rf_pca, 3), "\n")
-
 ```
 
 ```{r}
@@ -887,8 +842,8 @@ cat("Accuracy:", round(accuracy_rf_pca, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_rf_pca, 3), "\n")
 cat("F1 Score:", round(f1_score_rf_pca, 3), "\n")
 cat("AUC:", round(auc_value_rf_pca, 3), "\n")
-
 ```
+
 
 ### K-NN with PCA
 
@@ -900,50 +855,32 @@ test_X_pca <- as.matrix(test_pca[, -1])
 # Create vectors for labels (Y)
 train_Y_pca <- train_pca$label
 test_Y_pca <- test_pca$label
-
 ```
 
 ```{r}
 # Train k-NN model with probabilities using caret's knn3
-k <- 5  # Set the value of k
+k <- 15  # optimal k
 knn_model_pca <- knn3(train_X_pca, train_Y_pca, k = k)
 
 # Predict probabilities and classes for the test set
 knn_probabilities_pca <- predict(knn_model_pca, test_X_pca, type = "prob")
 knn_pca_predictions <- predict(knn_model_pca, test_X_pca, type = "class")
-
 ```
 
 # Reason we are using knn3 here:
-
 The knn function from the class package works for simple k-NN because it directly predicts class labels based on the nearest neighbors. However, when we apply PCA, we need class probabilities to compute metrics like AUC and plot the ROC curve. The knn function doesn't support probability predictions, which is why it doesn't work for k-NN with PCA when AUC is required.
 
 In contrast, knn3 from the caret package supports both class predictions and probability outputs, making it suitable for PCA-based k-NN with advanced metrics like AUC.
 
+
 ```{r}
 # Confusion matrix
 conf_matrix_knn_pca <- confusionMatrix(knn_pca_predictions, as.factor(test_Y_pca))
-print(conf_matrix_knn_pca)
 
-```
-
-```{r}
 # Extract specific metrics
-accuracy_knn_pca <- conf_matrix_knn_pca$overall['Accuracy']
-precision_knn_pca <- conf_matrix_knn_pca$byClass['Precision']
-recall_knn_pca <- conf_matrix_knn_pca$byClass['Recall']
-sensitivity_knn_pca <- conf_matrix_knn_pca$byClass['Sensitivity']
-specificity_knn_pca <- conf_matrix_knn_pca$byClass['Specificity']
-
-# Calculate F1 Score and Balanced Accuracy
-f1_score_knn_pca <- 2 * ((precision_knn_pca * recall_knn_pca) / (precision_knn_pca + recall_knn_pca))
-balanced_accuracy_knn_pca <- (sensitivity_knn_pca + specificity_knn_pca) / 2
-
-# Print metrics
-cat("Accuracy (k-NN with PCA):", round(accuracy_knn_pca, 3), "\n")
-cat("Balanced Accuracy (k-NN with PCA):", round(balanced_accuracy_knn_pca, 3), "\n")
-cat("F1 Score (k-NN with PCA):", round(f1_score_knn_pca, 3), "\n")
-
+accuracy_knn_pca <- conf_matrix_knn_pca$overall["Accuracy"]
+balanced_accuracy_knn_pca <- conf_matrix_knn_pca$byClass["Balanced Accuracy"]
+f1_score_knn_pca <- conf_matrix_knn_pca$byClass["F1"]
 ```
 
 ```{r}
@@ -953,17 +890,12 @@ test_Y_numeric_pca <- ifelse(test_Y_pca == "TREG", 1, 0)
 # Extract probabilities for the positive class ("TREG")
 knn_probs_treg <- knn_probabilities_pca[, "TREG"]
 
-
-
 # Calculate and plot the ROC curve
 roc_curve_knn_pca <- roc(test_Y_numeric_pca, knn_probs_treg)
-auc_value_knn_pca <- auc(roc_curve_knn_pca)
-
-# Plot ROC curve
 plot(roc_curve_knn_pca, col = "red", main = "ROC Curve for k-NN with PCA")
-cat("AUC (k-NN with PCA):", round(auc_value_knn_pca, 3), "\n")
 
-
+# Calculate AUC
+auc_value_knn_pca <- auc(roc_curve_knn_pca)
 ```
 
 ```{r}
@@ -972,17 +904,14 @@ cat("Accuracy:", round(accuracy_knn_pca, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_knn_pca, 3), "\n")
 cat("F1 Score:", round(f1_score_knn_pca, 3), "\n")
 cat("AUC:", round(auc_value_knn_pca, 3), "\n")
-
 ```
 
-### SVM with QDA
+
+### SVM with QDA 
 
 ```{r}
 # Train the SVM model on PCA-transformed data
 svm_model_pca <- svm(label ~ ., data = train_pca, probability = TRUE)
-
-# Print the SVM model summary
-summary(svm_model_pca)
 ```
 
 ```{r}
@@ -991,32 +920,16 @@ svm_pca_predictions <- predict(svm_model_pca, test_pca, probability = TRUE)
 
 # Predict probabilities
 svm_pca_probs <- attr(predict(svm_model_pca, test_pca, probability = TRUE), "probabilities")
-
 ```
 
 ```{r}
 # Confusion matrix
 conf_matrix_svm_pca <- confusionMatrix(svm_pca_predictions, as.factor(test_pca$label))
-print(conf_matrix_svm_pca)
-```
 
-```{r}
 # Extract specific metrics
-accuracy_svm_pca <- conf_matrix_svm_pca$overall['Accuracy']
-precision_svm_pca <- conf_matrix_svm_pca$byClass['Precision']
-recall_svm_pca <- conf_matrix_svm_pca$byClass['Recall']
-sensitivity_svm_pca <- conf_matrix_svm_pca$byClass['Sensitivity']
-specificity_svm_pca <- conf_matrix_svm_pca$byClass['Specificity']
-
-# Calculate F1 Score and Balanced Accuracy
-f1_score_svm_pca <- 2 * ((precision_svm_pca * recall_svm_pca) / (precision_svm_pca + recall_svm_pca))
-balanced_accuracy_svm_pca <- (sensitivity_svm_pca + specificity_svm_pca) / 2
-
-# Print metrics
-cat("Accuracy (SVM with PCA):", round(accuracy_svm_pca, 3), "\n")
-cat("Balanced Accuracy (SVM with PCA):", round(balanced_accuracy_svm_pca, 3), "\n")
-cat("F1 Score (SVM with PCA):", round(f1_score_svm_pca, 3), "\n")
-
+accuracy_svm_pca <- conf_matrix_svm_pca$overall["Accuracy"]
+balanced_accuracy_svm_pca <- conf_matrix_svm_pca$byClass["Balanced Accuracy"]
+f1_score_svm_pca <- conf_matrix_svm_pca$byClass["F1"]
 ```
 
 ```{r}
@@ -1028,12 +941,12 @@ svm_probs_treg <- svm_pca_probs[, "TREG"]
 
 # Calculate and plot the ROC curve
 roc_curve_svm_pca <- roc(test_Y_numeric_pca, svm_probs_treg)
-auc_value_svm_pca <- auc(roc_curve_svm_pca)
-
-# Plot ROC curve
 plot(roc_curve_svm_pca, col = "red", main = "ROC Curve for SVM with PCA")
-cat("AUC (SVM with PCA):", round(auc_value_svm_pca, 3), "\n")
+
+# Calculate AUC
+auc_value_svm_pca <- auc(roc_curve_svm_pca)
 ```
+
 
 ```{r}
 cat("SVM with PCA Classifier Summary:\n")
@@ -1041,18 +954,15 @@ cat("Accuracy:", round(accuracy_svm_pca, 3), "\n")
 cat("Balanced Accuracy:", round(balanced_accuracy_svm_pca, 3), "\n")
 cat("F1 Score:", round(f1_score_svm_pca, 3), "\n")
 cat("AUC:", round(auc_value_svm_pca, 3), "\n")
-
 ```
 
-### GBDT with PCA
+
+### GBDT with PCA 
 
 ```{r}
-
 # Convert labels to numeric (required for GBDT)
 train_pca$label <- as.numeric(as.factor(train_pca$label)) - 1
 test_pca$label <- as.numeric(as.factor(test_pca$label)) - 1
-
-library(gbm)
 
 # Train GBDT model on PCA-transformed data
 gbm_pca_model <- gbm(label ~ ., data = train_pca,
@@ -1066,51 +976,65 @@ gbm_pca_model <- gbm(label ~ ., data = train_pca,
 
 # Determine the optimal number of trees
 best_trees_pca <- gbm.perf(gbm_pca_model, method = "cv")
-
 ```
 
 ```{r}
 # Predict probabilities and class labels
 gbdt_pca_predictions <- predict(gbm_pca_model, test_pca[,-1], n.trees = best_trees_pca, type = "response")
 gbdt_pca_predictions_class <- ifelse(gbdt_pca_predictions > 0.5, 1, 0)
-
 ```
 
 ```{r}
 # Confusion matrix
 gbdt_pca_conf_matrix <- confusionMatrix(as.factor(gbdt_pca_predictions_class), as.factor(test_pca$label))
-print(gbdt_pca_conf_matrix)
 
 # Extract metrics
-gbdt_pca_accuracy <- mean(gbdt_pca_predictions_class == test_pca$label)
-gbdt_pca_balanced_accuracy <- mean(c(gbdt_pca_conf_matrix$byClass["Sensitivity"], gbdt_pca_conf_matrix$byClass["Specificity"]))
-gbdt_pca_f1_score <- 2 * (gbdt_pca_conf_matrix$byClass["Precision"] * gbdt_pca_conf_matrix$byClass["Recall"]) / 
-  (gbdt_pca_conf_matrix$byClass["Precision"] + gbdt_pca_conf_matrix$byClass["Recall"])
-
-# Print metrics
-cat("Accuracy (GBDT with PCA):", round(gbdt_pca_accuracy, 3), "\n")
-cat("Balanced Accuracy (GBDT with PCA):", round(gbdt_pca_balanced_accuracy, 3), "\n")
-cat("F1 Score (GBDT with PCA):", round(gbdt_pca_f1_score, 3), "\n")
+accuracy_gbdt_pca <- gbdt_pca_conf_matrix$overall["Accuracy"]
+balanced_accuracy_gbdt_pca <- gbdt_pca_conf_matrix$byClass["Balanced Accuracy"]
+f1_score_gbdt_pca <- gbdt_pca_conf_matrix$byClass["F1"]
 ```
 
 ```{r}
 # Calculate and plot the ROC curve
 gbdt_pca_roc_curve <- roc(test_pca$label, gbdt_pca_predictions)
-gbdt_pca_auc_value <- auc(gbdt_pca_roc_curve)
-
-# Plot ROC curve
 plot.roc(gbdt_pca_roc_curve, main = "GBDT ROC Curve with PCA", col = "red", lwd = 2)
-cat("AUC (GBDT with PCA):", round(gbdt_pca_auc_value, 3), "\n")
+
+# Calculate AUC
+gbdt_pca_auc_value <- auc(gbdt_pca_roc_curve)
 ```
+
 
 ```{r}
 cat("GBDT with PCA Classifier Summary:\n")
-cat("Accuracy:", round(gbdt_pca_accuracy, 3), "\n")
-cat("Balanced Accuracy:", round(gbdt_pca_balanced_accuracy, 3), "\n")
-cat("F1 Score:", round(gbdt_pca_f1_score, 3), "\n")
+cat("Accuracy:", round(accuracy_gbdt_pca, 3), "\n")
+cat("Balanced Accuracy:", round(balanced_accuracy_gbdt_pca, 3), "\n")
+cat("F1 Score:", round(f1_score_gbdt_pca, 3), "\n")
 cat("AUC:", round(gbdt_pca_auc_value, 3), "\n")
-
 ```
+
+### ROC curves (PCA)
+```{r}
+# Plot the first ROC curve (Logistic with PCA)
+plot(roc_curve_logistic_pca, col = "blue", lwd = 2, main = "Combined ROC Curves (PCA)")
+
+# Add other ROC curves
+plot(roc_curve_pca, col = "red", lwd = 2, add = TRUE)  # LDA with PCA
+plot(roc_curve_knn_pca, col = "green", lwd = 2, add = TRUE)  # k-NN with PCA
+plot(roc_curve_svm_pca, col = "purple", lwd = 2, add = TRUE)  # SVM with PCA
+plot(gbdt_pca_roc_curve, col = "orange", lwd = 2, add = TRUE)  # GBDT with PCA
+plot(roc_curve_rf_pca, col = "brown", lwd = 2, add = TRUE)  # Random Forest with PCA
+
+# Add a diagonal line representing random performance
+abline(a = 0, b = 1, lty = 2, col = "gray")
+
+# Add a legend
+legend("bottomright", 
+       legend = c("Logistic (PCA)", "LDA (PCA)", "k-NN (PCA)", "SVM (PCA)", "GBDT (PCA)", "RF (PCA)"),
+       col = c("blue", "red", "green", "purple", "orange", "brown"),
+       lwd = 2, cex = 0.6)
+```
+
+
 
 ## T1.3 Training and evaluation of classifiers
 
