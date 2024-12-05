@@ -160,7 +160,7 @@ We will perform a 5-fold cross validation on the data using the train control fu
 # Define train control with custom function for balanced accuracy
 train_control <- trainControl(
   method = "cv",
-  number = 5,
+  number = 10,
   summaryFunction = calculate_balanced_accuracy,
   classProbs = TRUE,
   savePredictions = "final"
@@ -173,7 +173,7 @@ Playing around with different values of lambda showed us, that the optimal value
 # Define grid for lambda values
 lambda_grid <- expand.grid(
   alpha = 1,
-  lambda = 10^seq(-5, -0.5, length.out = 10)
+  lambda = 10^seq(-5, -0.5, length.out = 100)
 )
 ```
 
@@ -208,7 +208,7 @@ non_zero_count <- sum(coefficients != 0) - 1
 cat("Number of non-zero coefficients:", non_zero_count, "\n")
 ```
 
-The best value for lambda according to our cross-validation is \~ 0.0316, so this is the value we will use to evaluate our model on the test data. Also, we can see that the number of features selected in our best model is 73. In the following plot we can see how the balanced accuracy differs with respect to the different values that we tested for lambda.
+The best value for lambda according to our cross-validation is \~ 0.03898, so this is the value we will use to evaluate our model on the test data. Also, we can see that the number of features selected in our best model is 62. In the following plot we can see how the balanced accuracy differs with respect to the different values that we tested for lambda.
 
 ```{r}
 # Plot balanced accuracy for training set over range for regularization parameter
@@ -238,49 +238,29 @@ plot(
 )
 ```
 
-In this final part, we evaluate how well our chosen model (lambda = 0.0316) performs on the unseen test data. The metric of evaluation is still the balanced accuracy.
+In this final part, we evaluate how well our chosen model (lambda = 0.03898) performs on the unseen test data. The metric of evaluation is still the balanced accuracy.
 
 ```{r}
-# Define threshold values
-threshold_values <- seq(0.35, 0.5, length.out = 20)
+# Predict probabilities on the test data
+lasso_probs <- predict(lasso_model, newdata = test_X, type = "prob")
 
-# Initialize dataframe to store results
-results <- data.frame(Threshold = threshold_values, BalancedAccuracy = NA)
+# Convert probabilities to class predictions using a threshold (e.g., 0.5)
+lasso_preds <- ifelse(lasso_probs[, "Class1"] > 0.5, "Class1", "Class0")
 
-# Loop over thresholds and calculate balanced accuracy
-for (i in seq_along(threshold_values)) {
-  threshold <- threshold_values[i]
-  
-  # Generate predictions based on the threshold
-  lasso_preds <- ifelse(lasso_probs[, "Class1"] > threshold, "Class1", "Class0")
-  lasso_preds <- factor(lasso_preds, levels = levels(test_Y))
-  
-  # Calculate confusion matrix
-  confusion_matrix <- table(test_Y, lasso_preds)
-  
-  # Safeguard: Ensure no division by zero if confusion matrix is empty or incorrect
-  if (nrow(confusion_matrix) == 2 && ncol(confusion_matrix) == 2) {
-    sensitivity <- confusion_matrix[2, 2] / (confusion_matrix[2, 2] + confusion_matrix[2, 1])
-    specificity <- confusion_matrix[1, 1] / (confusion_matrix[1, 1] + confusion_matrix[1, 2])
-    balanced_accuracy <- (sensitivity + specificity) / 2
-  } else {
-    balanced_accuracy <- NA
-  }
-  
-  # Store balanced accuracy
-  results$BalancedAccuracy[i] <- balanced_accuracy
-}
+# Ensure predictions are factors with the same levels as test_Y
+lasso_preds <- factor(lasso_preds, levels = levels(test_Y))
 
-# Identify the threshold with the best balanced accuracy
-best_result <- results[which.max(results$BalancedAccuracy), ]
-
-# Print results
-print(results)
-cat("Best Threshold:", best_result$Threshold, "\n")
-cat("Best Balanced Accuracy:", best_result$BalancedAccuracy, "\n")
+# Calculate balanced accuracy
+confusion_matrix <- table(test_Y, lasso_preds)
+sensitivity <- confusion_matrix[2, 2] / (confusion_matrix[2, 2] + confusion_matrix[2, 1])  # True Positive Rate
+specificity <- confusion_matrix[1, 1] / (confusion_matrix[1, 1] + confusion_matrix[1, 2])  # True Negative Rate
+sensitivity <- confusion_matrix[2, 2] / (confusion_matrix[2, 2] + confusion_matrix[2, 1])
+specificity <- confusion_matrix[1, 1] / (confusion_matrix[1, 1] + confusion_matrix[1, 2])
+balanced_accuracy <- (sensitivity + specificity) / 2
+cat("Balanced Accuracy on Test Data:", balanced_accuracy, "\n")
 ```
 
-We get a final balanced accuracy on the test data of 0.79 for the lasso model.
+We get a final balanced accuracy on the test data of 0.76 for the lasso model.
 
 # Random Forest for Feature Selection
 
@@ -311,7 +291,7 @@ cat("Training set size:", nrow(train2_data), "\n")
 cat("Test set size:", nrow(test2_data), "\n")
 ```
 
-For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, after the pre-selection this would mean m = sqrt(100,000) = \~316, which is extremely computationally expensive and when we evaluate our model on the test data set, we would still have p \>\> n. Thus we will apply a pre-selection of features by removing those features with a variance below 0.01 - given the low variance, these features will likel not serve as good predictors for our classification task.
+For a random forest of classification trees, we usually use a random selection of m= sqrt(p) predictors as split candidates each time a split in a tree is considered. However in our case, after the pre-selection this would mean m = sqrt(100,000) = \~316, which is extremely computationally expensive. Thus we will apply a pre-selection of features by removing those features with a variance below 0.01 - given the low variance, these features will likely not serve as good predictors for our classification task.
 
 ```{r}
 # Calculate the variance of each feature
@@ -329,12 +309,12 @@ train_X <- train_X[, selected_features]
 test_X <- test_X[, selected_features]
 ```
 
-sqrt(31,269) still leaves \~173 features to be considered at each split. We will still try if the model works better for a lower number of features, so that we can ensure n \> p when we run the model on the test set, which has a size of n = 160. Thus we define our grid for the hyperparameter m as follows:
+sqrt(31,269) still leaves \~173 features to be considered at each split. We will try if the model works for a lower number of features, with the aim to increase interpretability of the final model. Thus we define our grid for the hyperparameter m as follows:
 
 ```{r}
 # Define the hyperparameter grid for tuning
 tune_grid <- expand.grid(
-  mtry = c(130, 150, 173)
+  mtry = c(20, 50, 100)
 )
 ```
 
@@ -378,8 +358,8 @@ train_Y <- factor(train_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
 test_Y <- factor(test_Y, levels = c(0, 1), labels = c("Class0", "Class1"))
 
 # Define values to test for ntree and nodesize
-ntree_values <- c(100, 200, 500)
-nodesize_values <- c(5, 10, 15)
+ntree_values <- c(10, 15, 20)
+nodesize_values <- c(8, 10, 12)
 
 # Initialize variables to track the best model
 best_model <- NULL
@@ -421,9 +401,9 @@ print(best_model)
 
 The best model has the following combinations of parameter values:
 
--   mtry = 150
+-   mtry = 100
 
--   ntree = 100
+-   ntree = 10
 
 -   nodesize = 10
 
@@ -443,7 +423,7 @@ selected_features <- rownames(feature_importance)[apply(feature_importance, 1, f
 print(length(selected_features))
 ```
 
-We can see that 1591 features have been selected. Now we fit our model on the subset of selected features.
+We can see that 205 features have been selected. Now we fit our model on the subset of selected features.
 
 ```{r}
 # Retrain model on the subset of data with only the selected features 
@@ -456,8 +436,8 @@ reduced_test_X <- test2_data[, selected_features]
 rf_final_model <- randomForest(
   x = reduced_train_X,
   y = train_Y,
-  ntree = 100,
-  mtry = 150, 
+  ntree = 10,
+  mtry = 100, 
   nodesize = 10
 )
 ```
@@ -467,9 +447,7 @@ We now evaluate the final model on the unseen test data and extract the balanced
 ```{r}
 # Predicting on test set
 rf_predictions <- predict(rf_final_model, newdata = test_X)
-```
 
-```{r}
 # Confusion matrix
 conf_matrix_rf <- confusionMatrix(rf_predictions, test_Y)
 
@@ -477,7 +455,7 @@ conf_matrix_rf <- confusionMatrix(rf_predictions, test_Y)
 print(conf_matrix_rf)
 ```
 
-The balanced accuracy on the testing set is 0.7465.
+The balanced accuracy on the testing set is 0.7394.
 
 # Extreme Gradient Boosting (XGBoost)
 
@@ -585,8 +563,8 @@ for (i in 1:nrow(search_grid)) {
     params = params,
     data = train_matrix,
     nfold = 5,
-    nrounds = 100,
-    early_stopping_rounds = 10,
+    nrounds = 500,
+    early_stopping_rounds = 50,
     feval = balanced_accuracy,
     maximize = TRUE,
     verbose = FALSE
@@ -631,6 +609,16 @@ non_zero_features <- sum(importance$Gain > 0)
 cat("Number of features with non-zero importance:", non_zero_features, "\n")
 ```
 
+The best model has the following parameter values:
+
+-   max_depth - 4 ,
+
+-   eta - 0.1 ,
+
+-   colsample_bytree - 1 .
+
+The best model selects 59 out of the 100,000 features and returns a balanced accuracy of \~0.77 on the training set. As our objective to binary:logistic does not directly predict classes, but rather probabilities, we need to convert the probabilities into our classes.
+
 ```{r}
 # Use the best model to predict on the test set
 xgb_predictions <- predict(final_model, newdata = test_matrix)
@@ -651,6 +639,8 @@ conf_matrix <- confusionMatrix(binary_predictions, true_labels)
 # Print the confusion matrix and balanced accuracy
 print(conf_matrix)
 ```
+
+Our final XGBoost model returns a balanced accuracy of 0.715 on the test data set.
 
 # SVM
 
@@ -815,9 +805,7 @@ SVMbalanced_accuracy <- (SVMsensitivity + SVMspecificity) / 2
 cat("Balanced Accuracy on test set:", SVMbalanced_accuracy, "\n")
 ```
 
-
-
-## Elastic Net 
+## Elastic Net
 
 Elastic Net is a regularized regression method that combines the strengths of Lasso (L1 regularization) and Ridge (L2 regularization). It is particularly useful for high-dimensional datasets where the number of features exceeds the number of observations or when features are highly correlated. Elastic Net introduces two hyperparameters: alpha, which controls the balance between Lasso and Ridge penalties, and lambda, which determines the overall strength of regularization. By shrinking less important coefficients towards zero and selecting only the most relevant features, Elastic Net reduces model complexity and enhances predictive performance. This makes it a powerful tool for feature selection and classification tasks in challenging datasets.
 
@@ -829,8 +817,8 @@ library(doParallel)
 ```
 
 ### Split the dataset
-Splits the dataset into 80% training and 20% testing data.
-This ensures a clear separation between data used for model building and evaluation.
+
+Splits the dataset into 80% training and 20% testing data. This ensures a clear separation between data used for model building and evaluation.
 
 ```{r}
 set.seed(123)
@@ -840,6 +828,7 @@ test_data <- MLData_Task2[-train_indices, ]
 ```
 
 ### Extract features and labels:
+
 ```{r}
 train_X <- as.matrix(train_data[, -1])  
 test_X <- as.matrix(test_data[, -1])    
@@ -847,10 +836,11 @@ train_Y <- factor(train_data$label, levels = c(-1, 1), labels = c(0, 1))
 test_Y <- factor(test_data$label, levels = c(-1, 1), labels = c(0, 1))    
 ```
 
-- train_X and test_X hold feature matrices for training and testing, respectively.
-- train_Y and test_Y store the labels (converted from -1, 1 to 0, 1 for binary classification).
+-   train_X and test_X hold feature matrices for training and testing, respectively.
+-   train_Y and test_Y store the labels (converted from -1, 1 to 0, 1 for binary classification).
 
-### Feature pre-selection - Variance threshold: 
+### Feature pre-selection - Variance threshold:
+
 ```{r}
 feature_variances <- apply(train_X, 2, var)
 selected_features <- which(feature_variances >= 0.05)  
@@ -860,16 +850,17 @@ test_X <- test_X[, selected_features]
 cat("Number of features after variance filtering:", ncol(train_X), "\n")
 ```
 
-- Filters out features with low variance (< 0.05), as they contribute little predictive power.
-- The threshold 0.05 reduces dimensions to ~1,194 features, balancing computational feasibility and information retention.
+-   Filters out features with low variance (\< 0.05), as they contribute little predictive power.
+-   The threshold 0.05 reduces dimensions to \~1,194 features, balancing computational feasibility and information retention.
 
 # Comment on Threshold:
 
-- Higher Threshold (0.05): Results in fewer features (~1k), improving speed and reducing redundancy.
-- Lower Thresholds (0.01, 0.02): Retain more features (up to ~30k), but these cause issues with the Elastic Net method in this implementation (e.g., resulting in NaN balanced accuracy).
-- When thresholds are too low, issues such as multicollinearity and insufficient penalization can arise, causing numerical instability in Elastic Net.
+-   Higher Threshold (0.05): Results in fewer features (\~1k), improving speed and reducing redundancy.
+-   Lower Thresholds (0.01, 0.02): Retain more features (up to \~30k), but these cause issues with the Elastic Net method in this implementation (e.g., resulting in NaN balanced accuracy).
+-   When thresholds are too low, issues such as multicollinearity and insufficient penalization can arise, causing numerical instability in Elastic Net.
 
 ### Scale features:
+
 ```{r}
 train_X <- scale(train_X)
 test_X <- scale(test_X)
@@ -878,16 +869,18 @@ test_X <- scale(test_X)
 Standardizes features to have zero mean and unit variance, critical for regularization-based methods like Elastic Net, which are sensitive to feature scales.
 
 ### Define class weights
+
 ```{r}
 class_weights <- ifelse(train_Y == 1, 
                         1 / sum(train_Y == 1), 
                         1 / sum(train_Y == 0))
 ```
 
-- Accounts for class imbalance by assigning higher weights to the minority class (class 1).
-- Ensures the model does not favor the majority class disproportionately.
+-   Accounts for class imbalance by assigning higher weights to the minority class (class 1).
+-   Ensures the model does not favor the majority class disproportionately.
 
 ### Custom Balanced Accuracy function
+
 ```{r}
 calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
   confusion_matrix <- table(data$obs, data$pred)
@@ -907,11 +900,11 @@ calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
 }
 ```
 
-- Calculates the balanced accuracy metric, which is the average of sensitivity (recall for the positive class) and specificity (recall for the negative class).
-- This metric is crucial for imbalanced datasets, providing a fair assessment of model performance across both classes.
-
+-   Calculates the balanced accuracy metric, which is the average of sensitivity (recall for the positive class) and specificity (recall for the negative class).
+-   This metric is crucial for imbalanced datasets, providing a fair assessment of model performance across both classes.
 
 ###Train Control Setup
+
 ```{r}
 train_control <- trainControl(
   method = "cv",
@@ -922,10 +915,11 @@ train_control <- trainControl(
 )
 ```
 
-- Specifies 5-fold cross-validation for training.
-- Uses the custom calculate_balanced_accuracy function to evaluate model performance during cross-validation.
+-   Specifies 5-fold cross-validation for training.
+-   Uses the custom calculate_balanced_accuracy function to evaluate model performance during cross-validation.
 
 ### Hyperparameter Grid
+
 ```{r}
 elastic_net_grid <- expand.grid(
   alpha = seq(0, 1, by = 0.2),  
@@ -933,11 +927,10 @@ elastic_net_grid <- expand.grid(
 )
 ```
 
-Defines a grid of hyperparameters for Elastic Net:
-- alpha: Controls the balance between L1 (sparse selection) and L2 (shrinkage) penalties.
-- lambda: Regularization strength.
+Defines a grid of hyperparameters for Elastic Net: - alpha: Controls the balance between L1 (sparse selection) and L2 (shrinkage) penalties. - lambda: Regularization strength.
 
 ### Train Elastic Net Model
+
 ```{r}
 # Enable parallel processing
 cl <- makeCluster(detectCores() - 1)  # Use all available cores except one
@@ -962,8 +955,8 @@ stopCluster(cl)
 print(elastic_net_model$bestTune)
 ```
 
-- Trains the Elastic Net model using the defined hyperparameter grid and class weights.
-- Parallel processing reduces computational time.
+-   Trains the Elastic Net model using the defined hyperparameter grid and class weights.
+-   Parallel processing reduces computational time.
 
 ### Evaluate Model on Test Set
 
