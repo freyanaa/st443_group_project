@@ -1125,6 +1125,8 @@ selected_features <- names(feature_variances[feature_variances > variance_thresh
 cat("Number of features retained after variance threshold:", length(selected_features), "\n")
 ```
 
+We can see that 1194 features have been selected. Now we will fit our model on the subset of selected features.
+
 ```{r}
 selected_features <- intersect(selected_features, colnames(GBtrain_data))
 
