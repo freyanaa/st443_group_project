@@ -1142,6 +1142,41 @@ print(gbm_tuned_model$bestTune)
 
 -It optimizes the model using a grid of hyperparameters and evaluates performance based on balanced accuracy, then outputs the best hyperparameter combination.
 
+```{r}
+gbm_final_model <- gbm(
+  formula = label ~.,
+  data = GBtrain_data_filtered,
+  shrinkage = 0.03,
+  interaction.depth = 3,
+  n.minobsinnode = 5,
+  n.trees = 100
+)
+```
+
+# Extract feature importance
+```{r}
+GBfeature_importance <- summary(gbm_tuned_model, plot = FALSE)
+
+# Print the feature importance
+cat("Feature importance:\n")
+print(GBfeature_importance)
+```
+
+Selecting Important features based on a threshold 
+```{r}
+# Set a minimum importance threshold
+importance_threshold <- 0
+
+# Filter features based on the threshold
+selected_features <- GBfeature_importance %>%
+  filter(rel.inf > importance_threshold) %>%
+  pull(var)
+
+cat("Number of features selected based on importance threshold:", length(selected_features), "\n")
+```
+
+Number of features selected 114 
+
 #Evaluating on the test data
 
 ```{r}
