@@ -16,25 +16,108 @@ The aim of task 2 is to select properties of a molecule in a compound or random 
 # T1.1 Data Preparation and Summary Statistics
 
 ```{r}
-# Load all libraries required to execute the code in this notebook
+# Loading all libraries required to execute the code in this notebook
 library(ggplot2)
 library(dplyr)
 library(caret)
 library(glmnet)
 library(pROC)
 library(yardstick)
+library(Rtsne)
+library(randomForest)
+library(xgboost)
+library(doParallel)
+library(e1071)
+library(gbm)         
 ```
 
 ```{r}
-# Load and view the data
+# Loading and viewing the data
 MLData_Task2 <- read.csv("data2.csv.gz", header=TRUE)
 View(MLData_Task2)
 ```
 
 ```{r}
-# Check for any missing valus in the dataset
+# Checking for any missing values in the dataset
 any(is.na(MLData_Task2))
 ```
+
+## Class Balance Distribution 
+
+
+```{r}
+
+ggplot(MLData_Task2, aes(x = as.factor(label), fill = as.factor(label))) +
+  geom_bar(alpha = 0.7, color = "black") +
+  scale_fill_manual(values = c("red", "blue"), labels = c("Label -1", "Label 1")) +
+  labs(
+    title = "Class Distribution",
+    x = "Class Label",
+    y = "Count",
+    fill = "Class"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 14),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10)
+  )
+```
+
+
+## tsne Data Illustration 
+
+```{r}
+# Excluding the label column 
+labels <- MLData_Task2$label
+data_matrix <- MLData_Task2[, -1]  
+
+# Identifying and remove zero-variance columns
+non_constant_cols <- apply(data_matrix, 2, var) > 0
+data_matrix_clean <- as.matrix(data_matrix[, non_constant_cols])
+```
+
+
+```{r}
+# Performing t-SNE
+tsne_results <- Rtsne(as.matrix(data_matrix_clean), dims = 2, perplexity = 30, verbose = TRUE)
+```
+
+```{r}
+# Preparing data for visualization
+tsne_data <- as.data.frame(tsne_results$Y)
+tsne_data$label <- labels
+```
+
+```{r}
+# Extracting the embedding from t-SNE results
+tsne_data <- as.data.frame(tsne_results$Y)
+
+# Adding meaningful column names
+colnames(tsne_data) <- c("Dimension1", "Dimension2")
+
+# Adding the original labels for coloring
+tsne_data$label <- labels  
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(tsne_data, aes(x = Dimension1, y = Dimension2, color = as.factor(label))) +
+  geom_point(size = 2, alpha = 0.7) +
+  theme_minimal() +
+  labs(
+    title = "t-SNE Visualization",
+    x = "Dimension 1",
+    y = "Dimension 2",
+    color = "Label"
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
 
 ## Dataset-level statistics
 
@@ -267,8 +350,6 @@ We chose Random Forest as the next model for feature selection. We believe that 
 At first we create the training and testing set.
 
 ```{r}
-library(randomForest)
-library(caret)
 
 # Random split (80% training, 20% testing)
 set.seed(123)
@@ -465,10 +546,6 @@ The balanced accuracy on the testing set is 0.7394.
 
 XGBoost is a gradient boosting algorithm that builds an ensemble of decision trees to optimize predictive accuracy while providing feature importance scores. We chose it as we believe that its scalability and ability to handle high-dimensional data, as well as its speed make it a powerful tool for feature selection.
 
-```{r}
-library(xgboost)
-```
-
 At first we create the training and testing set.
 
 ```{r}
@@ -649,13 +726,6 @@ Our final XGBoost model returns a balanced accuracy of 0.715 on the test data se
 ## Elastic Net
 
 Elastic Net is a regularized regression method that combines the strengths of Lasso (L1 regularization) and Ridge (L2 regularization). It is particularly useful for high-dimensional datasets where the number of features exceeds the number of observations or when features are highly correlated. Elastic Net introduces two hyperparameters: alpha, which controls the balance between Lasso and Ridge penalties, and lambda, which determines the overall strength of regularization. By shrinking less important coefficients towards zero and selecting only the most relevant features, Elastic Net reduces model complexity and enhances predictive performance. This makes it a powerful tool for feature selection and classification tasks in challenging datasets.
-
-```{r}
-# Load necessary libraries
-library(caret)
-library(glmnet)
-library(doParallel)
-```
 
 ### Split the dataset
 
@@ -838,9 +908,6 @@ Using a variance threshold of 0.05 reduced the features to 1,194, enabling signi
 RFE (Recursive Feature Elimination) is a feature selection technique that iteratively builds models, removes the least important features, and re-trains the model. Support Vector Machines is an effective classifier in high dimensions and it reduces the risk of overfitting. Together SVM and RFE retains high classification performance by focusing on the most discriminative features while improving the model efficiency.
 
 ```{r}
-library(caret)
-library(e1071)
-
 # Random split (80% training, 20% testing)
 set.seed(123)
 train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
@@ -897,7 +964,7 @@ print(svm_rfe)
 Size 30 was selected because it has the highest accuracy at 0.9391. See all the accuracy values above. 
 
 ```{r}
-# Get the optimal subset of features based on RFE
+# Getting the optimal subset of features based on RFE
 selected_features <- svm_rfe$optVariables
 print(selected_features)
 
@@ -919,13 +986,6 @@ print(paste("SVM with RFE Balanced Accuracy: ", balanced_accuracy))
 #Gradient Boosting 
 
 Gradient Boosting is a technique that builds models sequentially by combining multiple weak learners, typically decision trees, to create a strong predictive model. Each tree corrects the errors of the previous one by focusing on minimizing a specific loss function (e.g., Mean Squared Error or Log Loss) using gradient descent. This process improves predictions by fitting new models to the residuals of the previous models, making it highly effective for regression and classification tasks.
-
-```{r}
-# Loading the required libraries
-library(caret)       
-library(gbm)         
-library(dplyr)       
-```
 
 ```{r}
 # Set seed for reproducibility
