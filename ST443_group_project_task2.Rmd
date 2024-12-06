@@ -16,108 +16,25 @@ The aim of task 2 is to select properties of a molecule in a compound or random 
 # T1.1 Data Preparation and Summary Statistics
 
 ```{r}
-# Loading all libraries required to execute the code in this notebook
+# Load all libraries required to execute the code in this notebook
 library(ggplot2)
 library(dplyr)
 library(caret)
 library(glmnet)
 library(pROC)
 library(yardstick)
-library(Rtsne)
-library(randomForest)
-library(xgboost)
-library(doParallel)
-library(e1071)
-library(gbm)         
 ```
 
 ```{r}
-# Loading and viewing the data
+# Load and view the data
 MLData_Task2 <- read.csv("data2.csv.gz", header=TRUE)
 View(MLData_Task2)
 ```
 
 ```{r}
-# Checking for any missing values in the dataset
+# Check for any missing valus in the dataset
 any(is.na(MLData_Task2))
 ```
-
-## Class Balance Distribution 
-
-
-```{r}
-
-ggplot(MLData_Task2, aes(x = as.factor(label), fill = as.factor(label))) +
-  geom_bar(alpha = 0.7, color = "black") +
-  scale_fill_manual(values = c("red", "blue"), labels = c("Label -1", "Label 1")) +
-  labs(
-    title = "Class Distribution",
-    x = "Class Label",
-    y = "Count",
-    fill = "Class"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5, size = 14),
-    axis.title = element_text(size = 12),
-    axis.text = element_text(size = 10),
-    legend.title = element_text(size = 12),
-    legend.text = element_text(size = 10)
-  )
-```
-
-
-## tsne Data Illustration 
-
-```{r}
-# Excluding the label column 
-labels <- MLData_Task2$label
-data_matrix <- MLData_Task2[, -1]  
-
-# Identifying and remove zero-variance columns
-non_constant_cols <- apply(data_matrix, 2, var) > 0
-data_matrix_clean <- as.matrix(data_matrix[, non_constant_cols])
-```
-
-
-```{r}
-# Performing t-SNE
-tsne_results <- Rtsne(as.matrix(data_matrix_clean), dims = 2, perplexity = 30, verbose = TRUE)
-```
-
-```{r}
-# Preparing data for visualization
-tsne_data <- as.data.frame(tsne_results$Y)
-tsne_data$label <- labels
-```
-
-```{r}
-# Extracting the embedding from t-SNE results
-tsne_data <- as.data.frame(tsne_results$Y)
-
-# Adding meaningful column names
-colnames(tsne_data) <- c("Dimension1", "Dimension2")
-
-# Adding the original labels for coloring
-tsne_data$label <- labels  
-```
-
-```{r}
-library(ggplot2)
-
-ggplot(tsne_data, aes(x = Dimension1, y = Dimension2, color = as.factor(label))) +
-  geom_point(size = 2, alpha = 0.7) +
-  theme_minimal() +
-  labs(
-    title = "t-SNE Visualization",
-    x = "Dimension 1",
-    y = "Dimension 2",
-    color = "Label"
-  ) +
-  theme(plot.title = element_text(hjust = 0.5))
-```
-
-
 
 ## Dataset-level statistics
 
@@ -350,6 +267,8 @@ We chose Random Forest as the next model for feature selection. We believe that 
 At first we create the training and testing set.
 
 ```{r}
+library(randomForest)
+library(caret)
 
 # Random split (80% training, 20% testing)
 set.seed(123)
@@ -546,6 +465,10 @@ The balanced accuracy on the testing set is 0.7394.
 
 XGBoost is a gradient boosting algorithm that builds an ensemble of decision trees to optimize predictive accuracy while providing feature importance scores. We chose it as we believe that its scalability and ability to handle high-dimensional data, as well as its speed make it a powerful tool for feature selection.
 
+```{r}
+library(xgboost)
+```
+
 At first we create the training and testing set.
 
 ```{r}
@@ -723,9 +646,179 @@ print(conf_matrix)
 
 Our final XGBoost model returns a balanced accuracy of 0.715 on the test data set.
 
+# SVM
+
+```{r}
+# Variance-Based Feature Selection
+feature_variances <- apply(MLData_Task2, 2, var)
+cat("Proportion of low-variance features (< 0.01):", mean(feature_variances < 0.01), "\n")
+```
+
+```{r}
+# Load required libraries
+library(caret)
+library(e1071)
+library(Matrix)
+```
+
+```{r}
+# Define custom Balanced Accuracy function
+calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
+  confusion_matrix <- table(data$obs, data$pred)
+  
+  # Handle edge cases
+  if (nrow(confusion_matrix) < 2 || ncol(confusion_matrix) < 2) {
+    sensitivity <- 0
+    specificity <- 0
+  } else {
+    TP <- confusion_matrix[2, 2]
+    FN <- confusion_matrix[2, 1]
+    TN <- confusion_matrix[1, 1]
+    FP <- confusion_matrix[1, 2]
+    sensitivity <- TP / (TP + FN)  # True Positive Rate
+    specificity <- TN / (TN + FP)  # True Negative Rate
+  }
+  
+  balanced_acc <- (sensitivity + specificity) / 2
+  return(c(BalancedAccuracy = balanced_acc))
+}
+
+```
+
+```{r}
+# Random split (80% training, 20% testing)
+set.seed(123)
+SVMtrain_indices <- sample(1:nrow(MLData_Task2), size = 0.7 * nrow(MLData_Task2))
+```
+
+```{r}
+# Create training and testing datasets
+SVMtrain2_data <- MLData_Task2[SVMtrain_indices, ]
+SVMtest2_data <- MLData_Task2[-SVMtrain_indices, ]
+
+# Prepare data
+SVMtrain_X <- as.matrix(SVMtrain2_data[, -1])  # Exclude label column
+SVMtest_X <- as.matrix(SVMtest2_data[, -1])  # Exclude label column
+SVMtrain_Y <- factor(SVMtrain2_data$label, levels = c(-1, 1), labels = c(0, 1))
+SVMtest_Y <- factor(SVMtest2_data$label, levels = c(-1, 1), labels = c(0, 1))
+
+# Verify split
+cat("Training set size:", nrow(SVMtrain2_data), "\n")
+cat("Test set size:", nrow(SVMtest2_data), "\n")
+```
+
+```{r}
+# Calculate the variance of each feature
+SVMfeature_variances <- apply(SVMtrain_X, 2, var)
+
+# Identify features with variance >= 0.01
+SVMselected_features <- which(SVMfeature_variances >= 0.01)
+
+# Print the number of features removed
+cat("Number of features removed:", ncol(SVMtrain_X) - length(SVMselected_features), "\n")
+cat("Number of features retained:", length(SVMselected_features), "\n")
+
+# Apply on training and test dataset
+SVMtrain_X <- SVMtrain_X[, SVMselected_features]
+SVMtest_X <- SVMtest_X[, SVMselected_features]
+```
+
+```{r}
+# Use make.names to ensure valid variable names
+levels(SVMtrain_Y) <- make.names(levels(SVMtrain_Y))
+levels(SVMtest_Y) <- make.names(levels(SVMtest_Y))
+
+# Verify the updated class labels
+cat("Training class levels:", levels(SVMtrain_Y), "\n")
+cat("Testing class levels:", levels(SVMtest_Y), "\n")
+```
+
+```{r}
+class_weights <- ifelse(SVMtrain_Y == 1,
+                        1 / sum(SVMtrain_Y == 1),
+                        1 / sum(SVMtrain_Y == 0))
+```
+
+```{r}
+# Define train control with custom summaryFunction
+SVMtrain_control <- trainControl(
+  method = "cv",                     # Cross-validation
+  number = 5,                        # Number of folds
+  summaryFunction = calculate_balanced_accuracy, # Use custom metric
+  classProbs = TRUE,                 # Enable probability calculations
+  savePredictions = "final",          # Save predictions for further analysis
+  allowParallel = FALSE 
+)
+```
+
+```{r}
+svm_tune_grid <- expand.grid(
+  sigma = c(0.01, 0.1, by=0.01),          # Fewer values
+  C = c(0.1, 1,10,100)                   # Fewer values
+)
+```
+
+```{r}
+# Convert training and testing data to sparse matrices
+sparse_train_matrix <- as(
+  Matrix(as.matrix(SVMtrain_X), sparse = TRUE),
+  "dgCMatrix"
+)
+sparse_test_matrix <- as(
+  Matrix(as.matrix(SVMtest_X), sparse = TRUE),
+  "dgCMatrix"
+)
+```
+
+```{r}
+# Train the SVM model
+set.seed(123)
+svm_model <- train(
+  x = sparse_train_matrix,
+  y = SVMtrain_Y,
+  method = "svmRadial",
+  metric = "BalancedAccuracy",
+  trControl = SVMtrain_control,
+  tuneGrid = svm_tune_grid,
+  weights = class_weights
+)
+
+# Print the model
+print(svm_model)
+```
+
+```{r}
+# Evaluate the Model
+SVMtest_predictions <- predict(svm_model, SVMtest_X)
+SVMconf_matrix <- confusionMatrix(SVMtest_predictions, SVMtest_Y)
+print(SVMconf_matrix)
+```
+
+```{r}
+# Calculate Balanced Accuracy for the test set
+TP <- SVMconf_matrix$table[2, 2]  # True Positives
+FN <- SVMconf_matrix$table[2, 1]  # False Negatives
+TN <- SVMconf_matrix$table[1, 1]  # True Negatives
+FP <- SVMconf_matrix$table[1, 2]  # False Positives
+
+# Handle division by zero
+SVMsensitivity <- ifelse((TP + FN) == 0, 0, TP / (TP + FN))
+SVMspecificity <- ifelse((TN + FP) == 0, 0, TN / (TN + FP))
+SVMbalanced_accuracy <- (SVMsensitivity + SVMspecificity) / 2
+
+cat("Balanced Accuracy on test set:", SVMbalanced_accuracy, "\n")
+```
+
 ## Elastic Net
 
 Elastic Net is a regularized regression method that combines the strengths of Lasso (L1 regularization) and Ridge (L2 regularization). It is particularly useful for high-dimensional datasets where the number of features exceeds the number of observations or when features are highly correlated. Elastic Net introduces two hyperparameters: alpha, which controls the balance between Lasso and Ridge penalties, and lambda, which determines the overall strength of regularization. By shrinking less important coefficients towards zero and selecting only the most relevant features, Elastic Net reduces model complexity and enhances predictive performance. This makes it a powerful tool for feature selection and classification tasks in challenging datasets.
+
+```{r}
+# Load necessary libraries
+library(caret)
+library(glmnet)
+library(doParallel)
+```
 
 ### Split the dataset
 
@@ -902,12 +995,14 @@ The model achieves a balanced accuracy of 0.83 on the test set, indicating stron
 
 Using a variance threshold of 0.05 reduced the features to 1,194, enabling significant dimensionality reduction. Lower thresholds (e.g., 0.01 or 0.02) resulted in NaN balanced accuracy, demonstrating the trade-off between stability and the number of features selected.
 
-
 ### SVM with RFE
 
 RFE (Recursive Feature Elimination) is a feature selection technique that iteratively builds models, removes the least important features, and re-trains the model. Support Vector Machines is an effective classifier in high dimensions and it reduces the risk of overfitting. Together SVM and RFE retains high classification performance by focusing on the most discriminative features while improving the model efficiency.
 
 ```{r}
+library(caret)
+library(e1071)
+
 # Random split (80% training, 20% testing)
 set.seed(123)
 train_indices <- sample(1:nrow(MLData_Task2), size = 0.8 * nrow(MLData_Task2))
@@ -926,7 +1021,7 @@ test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
 cat("Training set size:", nrow(train2_data), "\n")
 cat("Test set size:", nrow(test2_data), "\n")
 ```
-Applying a pre-selection of features by removing those features with a variance below 0.01 - given the low variance, these features will likely not serve as good predictors for our classification task.
+
 ```{r}
 # Calculate the variance of each feature
 SVMfeature_variances <- apply(train_X, 2, var)
@@ -944,7 +1039,7 @@ SVMtest_X <- test_X[, SVMselected_features]
 
 
 ```
-Standardize the features by centering (subtracting the mean) and scaling (dividing by the standard deviation). Standardization is important for SVM because it ensures that all features are on the same scale, preventing features with larger magnitudes from dominating the SVM's decision boundary. Centering (subtracting the mean) ensures that each feature has a mean of zero, which helps improve the optimization process and convergence of the SVM algorithm.
+
 ```{r}
 # Standardize the features by centering and scaling 
 preProcValues <- preProcess(SVMtrain_X, method = c("center", "scale"))
@@ -952,59 +1047,49 @@ SVMtrain_X <- predict(preProcValues, SVMtrain_X)
 SVMtest_X <- predict(preProcValues, SVMtest_X)
 ```
 
-Set up training control for Recursive Feature Elimination (RFE) with cross-validation. The rfeControl function specifies the method of resampling (cross-validation) and the number of folds (10).
-Then, run RFE using a SVM with a linear kernel. The rfe function evaluates different subsets of features (sizes 10, 20, 30, 40, 50, 60, 70, 80, 90, 100) to determine the optimal number of features based on model performance. Cross-validation is used to estimate the performance of each feature subset.
 ```{r}
 # Set up training control with cross-validation
 ctrl <- rfeControl(functions=rfFuncs, method="cv", number=10)
 
 # Run RFE with SVM model with different sizes to determine the best number of features
-svm_rfe <- rfe(SVMtrain_X, train_Y, sizes=c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100), 
+svm_rfe <- rfe(SVMtrain_X, train_Y, sizes=c(10, 20, 30, 40, 50), 
                rfeControl=ctrl, method="svmLinear")
 print(svm_rfe)
 ```
-Size 30 was selected because it has the highest accuracy at 0.9406
 
+Size 30 was selected because it has the highest accuracy at 0.9391. See all the accuracy values above.
 
-The svm_rfe object contains the result of the RFE process, including the set of features that resulted in the best model performance. Then, subset the training and test data to include only the selected features. This ensures that the model is trained and evaluated only on the most relevant features.
 ```{r}
-# Getting the optimal subset of features based on RFE
+# Get the optimal subset of features based on RFE
 selected_features <- svm_rfe$optVariables
 print(selected_features)
 
 # Subset the training and test data to include only the selected features
 X_train_selected <- SVMtrain_X[, selected_features]
 X_test_selected <- SVMtest_X[, selected_features]
-
-```
-Printed out above are the 30 features that were selected. 
-
-Train the SVM model using the selected features. The model is trained on the selected features (X_train_selected) and the corresponding target labels (train_Y). After training the model, the 'predict' function is used to generate predictions (y_pred) for the test set based on the features (X_test_selected) that were selected during feature selection.
-```{r}
-# Train the SVM model using the selected features
-svm_model <- svm(X_train_selected, as.factor(train_Y), kernel = "linear")
-
-# Generate predictions on the test set using the trained SVM model
-y_pred <- predict(svm_model, X_test_selected)
-
-# Ensure y_pred and test_Y are factors with the same levels
-y_pred <- factor(y_pred, levels = levels(test_Y)) 
-test_Y <- factor(test_Y, levels = levels(y_pred))  
 ```
 
-Generate the confusion matrix to evaluate the performance of the model and extract the Balanced Accuracy from the confusion matrix results.
+Above are the 30 features that were selected.
+
 ```{r}
 # Evaluate the model using balanced accuracy
 conf_matrix <- confusionMatrix(y_pred, test_Y)
 print(conf_matrix)
 balanced_accuracy <- conf_matrix$byClass["Balanced Accuracy"]
 print(paste("SVM with RFE Balanced Accuracy: ", balanced_accuracy))
-```
-SVM with RFE Balanced Accuracy: 0.711658841940532
 
-#Gradient Boosting 
+```
+
+#Gradient Boosting
 
 Gradient Boosting is a technique that builds models sequentially by combining multiple weak learners, typically decision trees, to create a strong predictive model. Each tree corrects the errors of the previous one by focusing on minimizing a specific loss function (e.g., Mean Squared Error or Log Loss) using gradient descent. This process improves predictions by fitting new models to the residuals of the previous models, making it highly effective for regression and classification tasks.
+
+```{r}
+# Loading the required libraries
+library(caret)       
+library(gbm)         
+library(dplyr)       
+```
 
 ```{r}
 # Set seed for reproducibility
@@ -1040,8 +1125,6 @@ feature_variances <- apply(GBtrain_data_numeric, 2, var, na.rm = TRUE)
 selected_features <- names(feature_variances[feature_variances > variance_threshold])
 cat("Number of features retained after variance threshold:", length(selected_features), "\n")
 ```
-
-We can see that 1194 features have been selected. Now we will fit our model on the subset of selected features.
 
 ```{r}
 selected_features <- intersect(selected_features, colnames(GBtrain_data))
