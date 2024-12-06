@@ -926,7 +926,7 @@ test_Y <- factor(test2_data$label, levels = c(-1, 1), labels = c(0, 1))
 cat("Training set size:", nrow(train2_data), "\n")
 cat("Test set size:", nrow(test2_data), "\n")
 ```
-
+Applying a pre-selection of features by removing those features with a variance below 0.01 - given the low variance, these features will likely not serve as good predictors for our classification task.
 ```{r}
 # Calculate the variance of each feature
 SVMfeature_variances <- apply(train_X, 2, var)
@@ -944,6 +944,7 @@ SVMtest_X <- test_X[, SVMselected_features]
 
 
 ```
+Standardize the features by centering (subtracting the mean) and scaling (dividing by the standard deviation). Standardization is important for SVM because it ensures that all features are on the same scale, preventing features with larger magnitudes from dominating the SVM's decision boundary. Centering (subtracting the mean) ensures that each feature has a mean of zero, which helps improve the optimization process and convergence of the SVM algorithm.
 ```{r}
 # Standardize the features by centering and scaling 
 preProcValues <- preProcess(SVMtrain_X, method = c("center", "scale"))
@@ -951,18 +952,21 @@ SVMtrain_X <- predict(preProcValues, SVMtrain_X)
 SVMtest_X <- predict(preProcValues, SVMtest_X)
 ```
 
-
+Set up training control for Recursive Feature Elimination (RFE) with cross-validation. The rfeControl function specifies the method of resampling (cross-validation) and the number of folds (10).
+Then, run RFE using a SVM with a linear kernel. The rfe function evaluates different subsets of features (sizes 10, 20, 30, 40, 50, 60, 70, 80, 90, 100) to determine the optimal number of features based on model performance. Cross-validation is used to estimate the performance of each feature subset.
 ```{r}
 # Set up training control with cross-validation
 ctrl <- rfeControl(functions=rfFuncs, method="cv", number=10)
 
 # Run RFE with SVM model with different sizes to determine the best number of features
-svm_rfe <- rfe(SVMtrain_X, train_Y, sizes=c(10, 20, 30, 40, 50), 
+svm_rfe <- rfe(SVMtrain_X, train_Y, sizes=c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100), 
                rfeControl=ctrl, method="svmLinear")
 print(svm_rfe)
 ```
-Size 30 was selected because it has the highest accuracy at 0.9391. See all the accuracy values above. 
+Size 30 was selected because it has the highest accuracy at 0.9406
 
+
+The svm_rfe object contains the result of the RFE process, including the set of features that resulted in the best model performance. Then, subset the training and test data to include only the selected features. This ensures that the model is trained and evaluated only on the most relevant features.
 ```{r}
 # Getting the optimal subset of features based on RFE
 selected_features <- svm_rfe$optVariables
@@ -971,18 +975,33 @@ print(selected_features)
 # Subset the training and test data to include only the selected features
 X_train_selected <- SVMtrain_X[, selected_features]
 X_test_selected <- SVMtest_X[, selected_features]
+
 ```
-Above are the 30 features that were selected. 
+Printed out above are the 30 features that were selected. 
 
+Train the SVM model using the selected features. The model is trained on the selected features (X_train_selected) and the corresponding target labels (train_Y). After training the model, the 'predict' function is used to generate predictions (y_pred) for the test set based on the features (X_test_selected) that were selected during feature selection.
+```{r}
+# Train the SVM model using the selected features
+svm_model <- svm(X_train_selected, as.factor(train_Y), kernel = "linear")
 
+# Generate predictions on the test set using the trained SVM model
+y_pred <- predict(svm_model, X_test_selected)
+
+# Ensure y_pred and test_Y are factors with the same levels
+y_pred <- factor(y_pred, levels = levels(test_Y)) 
+test_Y <- factor(test_Y, levels = levels(y_pred))  
+```
+
+Generate the confusion matrix to evaluate the performance of the model and extract the Balanced Accuracy from the confusion matrix results.
 ```{r}
 # Evaluate the model using balanced accuracy
 conf_matrix <- confusionMatrix(y_pred, test_Y)
 print(conf_matrix)
 balanced_accuracy <- conf_matrix$byClass["Balanced Accuracy"]
 print(paste("SVM with RFE Balanced Accuracy: ", balanced_accuracy))
-
 ```
+SVM with RFE Balanced Accuracy: 0.711658841940532
+
 #Gradient Boosting 
 
 Gradient Boosting is a technique that builds models sequentially by combining multiple weak learners, typically decision trees, to create a strong predictive model. Each tree corrects the errors of the previous one by focusing on minimizing a specific loss function (e.g., Mean Squared Error or Log Loss) using gradient descent. This process improves predictions by fitting new models to the residuals of the previous models, making it highly effective for regression and classification tasks.
