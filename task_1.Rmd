@@ -4,7 +4,11 @@ output: html_notebook
 editor_options: 
   chunk_output_type: inline
 ---
+# ST443 Group Project
 
+# Task 1: Binary classification
+
+Load all the necessary libraries for this notebook. 
 ```{r}
 library(ggplot2)
 library(tidyr)
@@ -22,56 +26,41 @@ library(klaR)
 library(gbm)
 ```
 
-# ST443 Group Project
-
-# Task 1: Binary classification
-
 ## Introduction
 
-The aim of Task 1 is to classify immune cell types based on RNA expression levels.
+The dataset contains RNA expression level measurements for p = 4123 genes across n = 5471 cells. Each row represents a single cell. The first column specifies the cell type (TREG or CD4+T), while each of the remaining columns records the logarithmically normalized RNA expression level for a specific gene. The aim of Task 1 is to use binary classification to classify the cell types based on RNA expression levels.
 
 Load and View data:
-
 ```{r}
 RNAdata <-read.csv("data1.csv.gz", header=TRUE)
 View(RNAdata)
 ```
 
 Check for missing data:
-
 ```{r}
 any(is.na(RNAdata))
 ```
-
 No data is missing.
 
-Check for infinite values
-
+Check for infinite values:
 ```{r}
 sum(sapply(RNAdata, function(x) sum(is.infinite(x))))
 ```
-
 No infinite values.
 
 ## T1.1 Data preparation and Summary Statistics
 
-### Balance / share of different celltypes in dataset
+### Balance of different celltypes in dataset
 
 To understand the distribution of cell types in the dataset, we first calculate the frequency and proportion of each label:
-
 ```{r}
 table(RNAdata$label)
-
 table(RNAdata$label) / nrow(RNAdata)
 ```
-
 The dataset consists of 3356 CD4+T cells (61.34%) and 2115 TREG cells (38.65%).
 
 To visualize this distribution, we generated a bar plot.
-
 ```{r}
-library(ggplot2)
-
 # Create a table of class counts
 class_counts <- table(RNAdata$label)
 
@@ -86,7 +75,6 @@ ggplot(class_counts_df, aes(x = Label, y = Count, fill = Label)) +
   theme_minimal()
 
 ```
-
 As seen in the plot, there is a class imbalance, with CD4+T cells being more prevalent than TREG cells. This imbalance could potentially impact the performance of machine learning models, as classifiers might be biased toward the majority class.
 
 ### Significance of genes for different celltypes
@@ -99,7 +87,7 @@ gene_stats <- data.frame(
   Mean = colMeans(RNAdata[,-1], na.rm = TRUE),
   Variance = apply(RNAdata[,-1], 2, var, na.rm = TRUE),
   
-  # Subset for CD4+T cells (assuming label column is named `label`)
+  # Subset for CD4+T cells
   Mean_CD4 = colMeans(RNAdata[RNAdata$label == "CD4+T", -1], na.rm = TRUE),
   Variance_CD4 = apply(RNAdata[RNAdata$label == "CD4+T", -1], 2, var, na.rm = TRUE),
   
@@ -113,7 +101,6 @@ View(gene_stats)
 ```
 
 We also generate a dataset that contains the minimum and the maximum value of each gene.
-
 ```{r}
 # Calculate the minimum for each gene
 min_values <- apply(RNAdata[,-1], 2, min)
@@ -123,15 +110,12 @@ max_values <- apply(RNAdata[,-1], 2, max)
 
 # Combine the results into a data frame
 min_max_values <- data.frame(
-  Gene = colnames(RNAdata[,-1]),  # Gene names
-  Minimum = min_values,                 # Minimum values
-  Maximum = max_values                  # Maximum values
+  Gene = colnames(RNAdata[,-1]),
+  Minimum = min_values, 
+  Maximum = max_values 
 )
-
-
 View(min_max_values)
 ```
-
 
 ### Understand Gene Expression patterns
 
@@ -142,7 +126,7 @@ To understand the Gene Expression patterns we create histograms for a few genes.
 CD4_data <- subset(RNAdata, label == "CD4+T")
 TREG_data <- subset(RNAdata, label == "TREG")
 
-# Select 4 genes at random (excluding the label column)
+# Select 4 genes at random
 gene_columns <- colnames(RNAdata)[-1]
 random_genes <- sample(gene_columns, 4)
 
@@ -174,13 +158,11 @@ for (gene in random_genes) {
        breaks = 20)
 }
 ```
-
 We can see that there is no significant difference in the distribution of the expressed genes between CD4+T and TREG cells. We can further see that across all celltypes and genes, there is a high number of cells without expression of that specific gene (expression = 0). For the rest of the cells, the expression follows a normal distribution around some mean between 2 and 5.
 
-# Density plots for genes
+### Density plots for genes
 
 The code below generates density plots for the expression levels of randomly selected genes. This helps visualize the distribution of RNA expression for each gene across the two cell types (CD4+T and TREG).
-
 ```{r}
 
 # Randomly select 5 genes for visualization
@@ -199,13 +181,11 @@ ggplot(RNAdata_long, aes(x = Expression, fill = label)) +
   theme_minimal() +
   theme(legend.position = "bottom")
 ```
-
 The density plots for most genes reveal highly overlapping distributions for CD4+T and TREG cells, suggesting that many genes do not exhibit significant differential expression between the two cell types. This overlap implies that these genes may not be strong discriminators for classification and might be less relevant for building effective predictive models. Such observations underscore the importance of identifying key genes or features that show greater separation between the classes, as they are likely to contribute more meaningfully to the task of binary classification.
 
-# Scatter plots
+### Scatter plots
 
 The scatter plots also helps us visualize the expression levels of randomly selected pairs of genes, comparing their distributions between the two cell types (CD4+T and TREG)
-
 ```{r}
 # Randomly select 2 pairs of genes for scatter plots
 set.seed(Sys.time())
@@ -224,29 +204,26 @@ scatter_plot2 <- ggplot(RNAdata, aes(x = .data[[selected_genes[3]]], y = .data[[
        x = selected_genes[3], y = selected_genes[4]) +
   theme_minimal()
 
-# Combine the two scatter plots into one
-combined_scatter_plots <- scatter_plot1 + scatter_plot2  # Combine plots with patchwork
+# Combine the two scatter plots into one with patchwork
+combined_scatter_plots <- scatter_plot1 + scatter_plot2
 print(combined_scatter_plots)
 ```
-
 The significant overlap in distributions between CD4+T and TREG cells indicates that these gene pairs may not be highly informative for distinguishing the two classes. This highlights the importance of identifying gene pairs or combinations with stronger class separation for effective feature selection and classification.
 
 ### Sparsity of Data
 
 RNA data is often sparse, i.e. has a significant number of null-values - our histogram plots above already indicate this. We calculate the sparsity of our dataframe by dividing the number of zero entries by the total number of entries.
-
 ```{r}
 sum(RNAdata == 0)/(dim(RNAdata)[1]*dim(RNAdata)[2])
 ```
+We get that 66.19% of our entries are null values, meaning that our data is very sparse and thus less variant, as most entries are repeated.
 
-We get that 66.17% of our entries are nullvalues, meaning that our data is very sparse and thus less variant, as most entries are repeated.
-
-## T1.2 Training and evaluation of classifiers
 
 ## T1.2 Training and evaluation of classifiers
 
 ### Split data into Train and Test data
 
+Create training (80%) and testing (20%) sets. Splitting the data into a training set and a test set allows us to train the model on one subset (train_data1) and evaluate its performance on another unseen subset (test_data1). This helps ensure that the model generalizes well to new data and doesn't overfit to the specific training data.
 ```{r}
 # Set seed for reproducibility
 set.seed(123)  
@@ -261,8 +238,9 @@ train_data1$label <- as.factor(train_data1$label)
 test_data1$label <- as.factor(test_data1$label)
 ```
 
-# Linear Discriminant Analysis (LDA)
+### Linear Discriminant Analysis (LDA)
 
+The lda() function performs Linear Discriminant Analysis, a classification technique that finds the linear combination of features that best separates two classes we have in our dataset (denoted by the label column). The formula label ~ . specifies that the 'label' variable is the outcome (dependent variable) and all other variables in train_data1 are used as predictors (independent variables) in the model.
 ```{r}
 # Train the LDA model
 lda_model <- lda(label ~ ., data = train_data1)
@@ -308,9 +286,13 @@ cat("AUC:", round(lda_auc_value, 3), "\n")
 cat("Test Error (LDA):", round(lda_test_error, 3), "\n")
 ```
 
-# Logistic Classifier
+### Logistic Classifier
+
+The glm() function fits generalized linear models, and in this case, it's used to perform logistic regression. The formula `label ~ .` specifies that the model predicts the binary outcome variable 'label' using all other predictor variables in the data (`train_data_log`). The `family = binomial` argument indicates that we are fitting a logistic regression model, which is used for binary classification. Logistic regression models the log-odds of the outcome (log(p / (1 - p))) as a linear combination of the predictor variables. This allows the model to output probabilities between 0 and 1 for the two possible classes (e.g., 0 or 1, Yes or No).
+
 
 ```{r}
+# Create training and testing data for the logisitic model
 train_data_log <- train_data1
 test_data_log <- test_data1
 
@@ -362,20 +344,223 @@ cat("AUC:", round(auc_logistic, 3), "\n")
 cat("Test Error (Logistic):", round(logistic_test_error, 3), "\n")
 ```
 
-# Quadratic Discriminant Analysis (QDA)
+### Quadratic Discriminant Analysis (QDA)
 
 QDA fails in our case due to the high dimensionality of the data (p = 4123) compared to the sample size (n = 5471). Estimating two class-specific covariance matrices in QDA requires p^2 entries per matrix, leading to unreliable and noisy estimates when n << p^2. In contrast, LDA assumes a shared covariance matrix across classes, allowing it to pool all data points for estimation, making it more robust in high-dimensional settings. Due to these limitations, we do not train QDA with the 80-20 split.
 
-# Random Forest
+See code where it fails below:
+```{r}
+# Create training (80%) and testing (20%) set for qda
+test_data_factor <- test_data1
+train_data_factor <- train_data1
+
+test_data_factor$label <- factor(test_data_factor$label)
+train_data_factor$label <- factor(train_data_factor$label)
+
+# QDA Model, tuned parameters gamma and lamba but still received the same errors
+model_qda <- qda(label ~ ., data = train_data_factor, gamma = 0.01, lambda = 0.5)
+```
+The error we are seeing is: Error in qda.default(x, grouping, ...) : 
+  some group is too small for 'qda'
+
+### K-NN
+
+The knn() function in R is used to perform classification using the k-Nearest Neighbors algorithm. In this model, the prediction for a test observation is based on the majority class of the 'k' nearest training samples.
+The algorithm computes the distance (Euclidean) between each test point and all training points in the feature space, selects the 'k' nearest neighbors, and assigns the most frequent class label from these neighbors as the predicted label for the test point.
+Tuning: found that k=15 is the optimal k.
+```{r}
+train_X <- as.matrix(train_data1[, -1])
+test_X <- as.matrix(test_data1[, -1])
+
+# Create vectors for labels
+train_Y <- as.factor(train_data1$label)
+test_Y <- as.factor(test_data1$label)
+```
 
 ```{r}
-library(randomForest)
+## TUNING - do not need to run ##
 
-# Train Random Forest with mtry = sqrt(number of predictors)
-p <- ncol(train_data1) - 1  # Number of predictors (excluding the label column)
+cv_control <- trainControl(method = "cv", number = 10)
+
+# Tuning the knn to try k values from 1 to 20
+knn_tune <- train(train_X, train_Y, method = "knn", trControl = cv_control,
+                  tuneGrid = expand.grid(k = 1:20))
+optimal_k <- knn_tune$bestTune$k
+print(optimal_k)
+
+# optimal k is 15
+```
+After tuning k from 1 to 20, we found the optimal k is 15. We input 15 in as the optimal k to the knn model below. 
+
+```{r}
+# Train and predict using k-NN with k = 15
+optimal_k <- 15
+
+knn_predictions <- knn(train_X, test_X, train_Y, k = optimal_k)
+
+# Confusion matrix
+conf_matrix_knn <- confusionMatrix(as.factor(knn_predictions), as.factor(test_Y))
+
+# Calculate Accuracy, Balanced Accuracy, F1 Score
+accuracy_knn <- conf_matrix_knn$overall["Accuracy"]
+balanced_accuracy_knn <- conf_matrix_knn$byClass["Balanced Accuracy"]
+f1_score_knn <- conf_matrix_knn$byClass["F1"]
+```
+
+```{r}
+# Calculate test error
+knn_test_error <- mean(knn_predictions != test_Y)
+
+# AUC Calculation
+knn_probabilities <- knn(train_X, test_X, train_Y, k = optimal_k, prob = TRUE)
+knn_probabilities <- ifelse(knn_predictions == "TREG", attr(knn_probabilities, "prob"), 1 - attr(knn_probabilities, "prob"))
+
+knn_roc_obj <- roc(as.numeric(test_Y), knn_probabilities)
+auc_knn <- auc(knn_roc_obj)
+
+# Plot ROC curve
+plot(knn_roc_obj, col = "red", main = "ROC Curve for k-NN (k=15)")
+
+```
+
+```{r}
+cat("KNN Classifiers Summary:\n")
+cat("Accuracy:", round(accuracy_knn, 3), "\n")
+cat("Balanced Accuracy:", round(balanced_accuracy_knn, 3), "\n")
+cat("F1 Score:", round(f1_score_knn, 3), "\n")
+cat("AUC:", round(auc_knn, 3), "\n")
+cat("Test Error (k-NN):", round(knn_test_error, 3), "\n")
+```
+
+### Gradient Boosting Decision Tree (GBDT)
+
+The gbm() function fits a Gradient Boosting Model, which is an ensemble method that builds a series of weak decision trees where each tree corrects the errors made by the previous tree. This is done by fitting trees to the residuals of the previous model and adjusting the predictions iteratively to minimize the loss function.
+distribution = "bernoulli": Specifies the loss function for a binary classification problem. For binary classification, "bernoulli" is appropriate as it optimizes log-likelihood for binary outcomes.
+n.trees = 150: Specifies the number of boosting iterations (trees) to fit.
+interaction.depth = 5: The maximum depth of individual trees. A value of 5 means that each tree can have a maximum of 5 levels of splits.
+shrinkage = 0.1: The learning rate, it controls how much each tree contributes to the final model. 
+n.minobsinnode = 20: Specifies the minimum number of observations required to split a node in the tree. 
+The GBDT model works by building trees sequentially, where each subsequent tree attempts to correct the errors (residuals) made by the previous trees.This boosting technique reduces both bias and variance, making the model highly effective for both classification tasks.
+
+Tuning: used the follow tuning grid to tune the model on n.trees, interaction.depth, shrinkage, n.minobsinnode.
+```{r}
+## TUNING - do not need to run ##
+
+# Create task and train data for gbdt
+test_data_gbdt <- test_data1
+train_data_gbdt <- train_data1
+
+test_data_gbdt$label <- as.numeric(as.factor(test_data_gbdt$label)) - 1
+train_data_gbdt$label <- as.numeric(as.factor(train_data_gbdt$label)) - 1
+
+# Create the tuning grid. We want to tune on n.trees, interaction.depth, shrinkage, and n.minobsinnode
+tune_grid <- expand.grid(
+  n.trees = c(50, 100, 150),
+  interaction.depth = c(1, 3, 5),
+  shrinkage = c(0.01, 0.1, 0.2),
+  n.minobsinnode = c(10, 20) 
+)
+
+# This model is used as a starting point for the tuning process, with the specific hyperparameters defined in tune_grid above
+model <- gbm(
+  formula = label ~ .,              
+  data = train_data_gbdt,              
+  distribution = "bernoulli",    
+  n.cores = 1,                   
+  verbose = FALSE        
+)
+# Set up cross-validation with 5 folds
+train_control <- trainControl(method = "cv", number = 5)
+
+# This function will train the model for each combination of hyperparameters specified in the 'tune_grid'
+tuned_model <- train(
+  label ~ ., 
+  data = train_data_gbdt, 
+  method = "gbm", 
+  trControl = train_control, 
+  tuneGrid = tune_grid,
+  verbose = FALSE
+)
+
+# Output the tuned model to display the best hyperparameter combination
+tuned_model
+```
+
+Using the above tuning model, we found the optimal n.trees = 150, interactions.depth = 5, shrinkage = 0.1, and 
+n.minobsinnode = 20. I used those values for the model below. 
+
+```{r}
+# Create task and train data for gbdt
+test_data_gbdt <- test_data1
+train_data_gbdt <- train_data1
+
+test_data_gbdt$label <- as.numeric(as.factor(test_data_gbdt$label)) - 1
+train_data_gbdt$label <- as.numeric(as.factor(train_data_gbdt$label)) - 1
+
+# This gbm model is trained with several key hyperparameters that control the learning process, such as the number of trees, tree depth, learning rate (shrinkage), and minimum observations per node
+gbm_model <- gbm(label ~ ., data = train_data_gbdt, 
+                 distribution = "bernoulli", 
+                 n.trees = 150, 
+                 interaction.depth = 5, 
+                 cv.folds = 5,
+                 shrinkage = 0.1,
+                 n.minobsinnode = 20,
+                 verbose = FALSE)
+
+# Determine the optimal number of trees based on cross-validation performance
+best_trees <- gbm.perf(gbm_model, method = "cv")
+
+# Make predictions using the trained GBM model on the test data, excluding the label column
+gbdt_predictions <- predict(gbm_model, test_data_gbdt[,-1], n.trees = best_trees, type = "response")
+
+# Convert the continuous predicted probabilities to binary class labels (0 or 1)
+gbdt_predictions_class <- ifelse(gbdt_predictions > 0.5, 1, 0)
+```
+
+```{r}
+# Accuracy
+gbdt_accuracy <- mean(gbdt_predictions_class == test_data_gbdt$label)
+
+# Confusion Matrix
+gbdt_conf_matrix <- confusionMatrix(as.factor(gbdt_predictions_class), as.factor(test_data_gbdt$label))
+
+# Balanced Accuracy
+gbdt_balanced_accuracy <- mean(gbdt_conf_matrix$byClass["Sensitivity"], gbdt_conf_matrix$byClass["Specificity"])
+
+# F1 Score
+gbdt_f1_score <- 2 * (gbdt_conf_matrix$byClass["Precision"] * gbdt_conf_matrix$byClass["Recall"]) / 
+  (gbdt_conf_matrix$byClass["Precision"] + gbdt_conf_matrix$byClass["Recall"])
+
+# AUC 
+gbdt_roc_curve <- roc(test_data_gbdt$label, gbdt_predictions)
+gbdt_auc_value <- auc(gbdt_roc_curve)
+
+# ROC Curve
+plot.roc(gbdt_roc_curve, main = "GBDT ROC Curve", col = "red", lwd = 2)
+
+# Calculate test error
+gbdt_test_error <- mean(gbdt_predictions_class != test_data_gbdt$label)
+```
+
+```{r}
+cat("Gradient Boosting Decision Trees Model Evaluation Summary:\n")
+cat("Accuracy:", round(gbdt_accuracy, 3), "\n")
+cat("Balanced Accuracy:", round(gbdt_balanced_accuracy, 3), "\n")
+cat("F1 Score:", round(gbdt_f1_score, 3), "\n")
+cat("AUC:", round(gbdt_auc_value, 3), "\n")
+cat("Test Error:", round(gbdt_test_error, 3), "\n")
+```
+
+### Random Forest
+
+The randomForest() function fits an ensemble of decision trees using the Random Forest algorithm. It builds multiple decision trees (ntree = 500 in this case) by bootstrapping (sampling with replacement) from the training data. Each tree is grown using a random subset of features (mtry = round(sqrt(p))). This randomness helps reduce overfitting and increases the model's ability to generalize to unseen data. The argument `importance = TRUE` means that the model will calculate and store the importance of each feature, which can be useful for understanding which predictors are most influential in predicting the target variable.
+Tuning: tuned with different ntrees (100, 150, 250, 500) and found 500 was the optimal. 
+```{r}
+p <- ncol(train_data1) - 1  
 train_data1$label <- as.factor(train_data1$label)
-rf_model <- randomForest(label ~ ., data = train_data1, mtry = round(sqrt(p)), ntree = 500, importance = TRUE)
 
+# Train Random Forest with mtry = sqrt(number of predictors) and 500 trees
+rf_model <- randomForest(label ~ ., data = train_data1, mtry = round(sqrt(p)), ntree = 500, importance = TRUE)
 ```
 
 ```{r}
@@ -418,76 +603,13 @@ cat("AUC:", round(auc_value_rf, 3), "\n")
 cat("Test Error (Random Forest):", round(rf_test_error, 3), "\n")
 ```
 
-### K-NN
+### Support Vector Machine (SVM)
 
+The svm() function in R fits a Support Vector Machine (SVM) for classification to predict the 'label' variable based on the features in the 'train_data_factor' dataset. The SVM algorithm tries to find the optimal hyperplane that separates data points from different classes while maximizing the margin between them.
+kernel = linear, which is suitable for linearly separable data. The linear kernel finds a straight-line (or hyperplane in higher dimensions) decision boundary to separate classes.
+Tuning: Tuned SVM cost values from 10^-3 to 10^3 and found they all gave the same result, so using the default cost in this SVM model, cost = 1.
 ```{r}
-train_X <- as.matrix(train_data1[, -1]) # Excluding the label column
-test_X <- as.matrix(test_data1[, -1])
-
-# Create vectors for labels (Y)
-train_Y <- as.factor(train_data1$label)
-test_Y <- as.factor(test_data1$label)
-```
-
-
-```{r}
-## takes a lot of time to run ##
-
-cv_control <- trainControl(method = "cv", number = 10)
-
-# Tuning the knn to try k values from 1 to 20
-knn_tune <- train(train_X, train_Y, method = "knn", trControl = cv_control,
-                  tuneGrid = expand.grid(k = 1:20))
-optimal_k <- knn_tune$bestTune$k
-print(optimal_k)
-
-# optimal k is 15
-```
-
-```{r}
-# Train and predict using k-NN with k = 15
-optimal_k <- 15
-
-knn_predictions <- knn(train_X, test_X, train_Y, k = optimal_k)
-
-# Confusion matrix
-conf_matrix_knn <- confusionMatrix(as.factor(knn_predictions), as.factor(test_Y))
-
-# Calculate Accuracy, Balanced Accuracy, F1 Score
-accuracy_knn <- conf_matrix_knn$overall["Accuracy"]
-balanced_accuracy_knn <- conf_matrix_knn$byClass["Balanced Accuracy"]
-f1_score_knn <- conf_matrix_knn$byClass["F1"]
-```
-
-```{r}
-# Calculate test error
-knn_test_error <- mean(knn_predictions != test_Y)
-
-# AUC Calculation
-knn_probabilities <- knn(train_X, test_X, train_Y, k = optimal_k, prob = TRUE)  # Use the prob argument
-knn_probabilities <- ifelse(knn_predictions == "TREG", attr(knn_probabilities, "prob"), 1 - attr(knn_probabilities, "prob"))
-
-knn_roc_obj <- roc(as.numeric(test_Y), knn_probabilities)
-auc_knn <- auc(knn_roc_obj)
-
-# Plot ROC curve
-plot(knn_roc_obj, col = "red", main = "ROC Curve for k-NN (k=15)")
-
-```
-
-```{r}
-cat("KNN Classifiers Summary:\n")
-cat("Accuracy:", round(accuracy_knn, 3), "\n")
-cat("Balanced Accuracy:", round(balanced_accuracy_knn, 3), "\n")
-cat("F1 Score:", round(f1_score_knn, 3), "\n")
-cat("AUC:", round(auc_knn, 3), "\n")
-cat("Test Error (k-NN):", round(knn_test_error, 3), "\n")
-```
-
-# Support Vector Machine (SVM)
-
-```{r}
-# Prepare the data
+# Prepare the data for SVM
 test_data_factor <- test_data1
 train_data_factor <- train_data1
 
@@ -495,7 +617,7 @@ test_data_factor$label <- factor(test_data_factor$label)
 train_data_factor$label <- factor(train_data_factor$label)
 
 # Train the SVM model
-svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear")
+svm_model <- svm(label ~ ., data = train_data_factor, kernel = "linear", cost = 1)
 ```
 
 ```{r}
@@ -536,101 +658,10 @@ cat("AUC:", round(svm_auc, 3), "\n")
 cat("Test Error:", round(svm_test_error, 3), "\n")
 ```
 
-# Gradient Boosting Decision Tree (GBDT)
-
-```{r}
-### Tuning - takes a long time to run ***
-
-# Create the tuning grid
-tune_grid <- expand.grid(
-  n.trees = c(50, 100, 150),
-  interaction.depth = c(1, 3, 5),
-  shrinkage = c(0.01, 0.1, 0.2),
-  n.minobsinnode = c(10, 20) 
-)
-
-model <- gbm(
-  formula = label ~ .,              
-  data = train_data_gbdt,              
-  distribution = "bernoulli",    
-  n.cores = 1,                   
-  verbose = FALSE        
-)
-train_control <- trainControl(method = "cv", number = 5)
-tuned_model <- train(
-  label ~ ., 
-  data = train_data_gbdt, 
-  method = "gbm", 
-  trControl = train_control, 
-  tuneGrid = tune_grid,
-  verbose = FALSE
-)
-tuned_model
-```
-
-Using the above tuning model, we found the optimal n.trees = 150, interactions.depth = 5, shrinkage = 0.1, and 
-n.minobsinnode = 20. I used those values for the model below. 
-
-```{r}
-test_data_gbdt <- test_data1
-train_data_gbdt <- train_data1
-
-test_data_gbdt$label <- as.numeric(as.factor(test_data_gbdt$label)) - 1
-train_data_gbdt$label <- as.numeric(as.factor(train_data_gbdt$label)) - 1
-
-#Model
-gbm_model <- gbm(label ~ ., data = train_data_gbdt, 
-                 distribution = "bernoulli", 
-                 n.trees = 150, 
-                 interaction.depth = 5, 
-                 cv.folds = 5,
-                 shrinkage = 0.1,
-                 n.minobsinnode = 20,
-                 verbose = FALSE)
-
-best_trees <- gbm.perf(gbm_model, method = "cv")
-
-gbdt_predictions <- predict(gbm_model, test_data_gbdt[,-1], n.trees = best_trees, type = "response")
-
-gbdt_predictions_class <- ifelse(gbdt_predictions > 0.5, 1, 0)
-```
-
-```{r}
-# Accuracy
-gbdt_accuracy <- mean(gbdt_predictions_class == test_data_gbdt$label)
-
-# Confusion Matrix
-gbdt_conf_matrix <- confusionMatrix(as.factor(gbdt_predictions_class), as.factor(test_data_gbdt$label))
-
-# Balanced Accuracy
-gbdt_balanced_accuracy <- mean(gbdt_conf_matrix$byClass["Sensitivity"], gbdt_conf_matrix$byClass["Specificity"])
-
-# F1 Score
-gbdt_f1_score <- 2 * (gbdt_conf_matrix$byClass["Precision"] * gbdt_conf_matrix$byClass["Recall"]) / 
-  (gbdt_conf_matrix$byClass["Precision"] + gbdt_conf_matrix$byClass["Recall"])
-
-# AUC 
-gbdt_roc_curve <- roc(test_data_gbdt$label, gbdt_predictions)
-gbdt_auc_value <- auc(gbdt_roc_curve)
-
-# ROC Curve
-plot.roc(gbdt_roc_curve, main = "GBDT ROC Curve", col = "red", lwd = 2)
-
-# Calculate test error
-gbdt_test_error <- mean(gbdt_predictions_class != test_data_gbdt$label)
-```
-
-```{r}
-cat("Gradient Boosting Decision Trees Model Evaluation Summary:\n")
-cat("Accuracy:", round(gbdt_accuracy, 3), "\n")
-cat("Balanced Accuracy:", round(gbdt_balanced_accuracy, 3), "\n")
-cat("F1 Score:", round(gbdt_f1_score, 3), "\n")
-cat("AUC:", round(gbdt_auc_value, 3), "\n")
-cat("Test Error:", round(gbdt_test_error, 3), "\n")
-```
-
 
 ### ROC Curves
+
+This plots all the ROC Curves for the above 6 classifiers on one plot for comparision. 
 ```{r}
 # Plot ROC Curves for Multiple Classifiers
 plot(roc_curve_logistic, col = "blue", lwd = 2, main = "ROC Curves for Multiple Classifiers")
@@ -650,10 +681,10 @@ legend("bottomright",
        lwd = 2, cex = 0.6)
 ```
 
+### PCA with 10 components 
+The next part of the task is to train and evaluate the above 7 classifiers using PCA with 10 components. 
 
-### PCA with 10 components ###
-
-Split the data:
+Principal Component Analysis (PCA) is a dimensionality reduction technique that is often used to simplify data, visualize patterns, or reduce the number of features in a dataset while retaining as much variance (information) as possible. PCA is particularly useful when you have a large number of correlated features and you want to reduce them to a smaller set of uncorrelated components, which can make machine learning models more efficient and less prone to overfitting.
 ```{r}
 # Perform PCA on the training data (excluding the label column)
 pca <- prcomp(train_data1[, -1], scale. = TRUE)
@@ -700,8 +731,6 @@ cat("Balanced Accuracy:", round(balanced_accuracy_lda_pca, 3), "\n")
 cat("F1 Score:", round(f1_score_lda_pca, 3), "\n")
 cat("AUC:", round(auc_pca, 3), "\n")
 ```
-
-
 
 ### Logistic classifier with PCA
 
@@ -761,6 +790,8 @@ cat("Test Error (Logistic with PCA):", round(logistic_pca_test_error, 3), "\n")
 
 ### QDA with PCA
 
+We were able to run QDA using PCA successfully. We were not able to run QDA above because QDA struggles with high-dimensional data because of singular covariance matrices and overfitting. But by reducing the dimensionality of the data using PCA, we create a more stable and informative dataset, which allows QDA to function properly without encountering issues we saw previously.
+
 ```{r}
 # Train a QDA model on the PCA-transformed data
 qda_pca_model <- qda(label ~ ., data = train_pca)
@@ -768,7 +799,7 @@ qda_pca_model <- qda(label ~ ., data = train_pca)
 
 ```{r}
 # Predict the label of the test data
-qda_pca_predictions <- predict(qda_pca_model, test_pca[,-1])  # Exclude label column
+qda_pca_predictions <- predict(qda_pca_model, test_pca[,-1])
 qda_pca_predicted_labels <- qda_pca_predictions$class
 
 # Confusion matrix
@@ -844,12 +875,11 @@ cat("F1 Score:", round(f1_score_rf_pca, 3), "\n")
 cat("AUC:", round(auc_value_rf_pca, 3), "\n")
 ```
 
-
 ### K-NN with PCA
 
 ```{r}
 # Create matrices for predictors (X)
-train_X_pca <- as.matrix(train_pca[, -1])  # Exclude the label column
+train_X_pca <- as.matrix(train_pca[, -1]) 
 test_X_pca <- as.matrix(test_pca[, -1])
 
 # Create vectors for labels (Y)
@@ -859,7 +889,7 @@ test_Y_pca <- test_pca$label
 
 ```{r}
 # Train k-NN model with probabilities using caret's knn3
-k <- 15  # optimal k
+k <- 15  # optimal k we found by tuning above
 knn_model_pca <- knn3(train_X_pca, train_Y_pca, k = k)
 
 # Predict probabilities and classes for the test set
@@ -867,7 +897,7 @@ knn_probabilities_pca <- predict(knn_model_pca, test_X_pca, type = "prob")
 knn_pca_predictions <- predict(knn_model_pca, test_X_pca, type = "class")
 ```
 
-# Reason we are using knn3 here:
+Reason we are using knn3 here:
 The knn function from the class package works for simple k-NN because it directly predicts class labels based on the nearest neighbors. However, when we apply PCA, we need class probabilities to compute metrics like AUC and plot the ROC curve. The knn function doesn't support probability predictions, which is why it doesn't work for k-NN with PCA when AUC is required.
 
 In contrast, knn3 from the caret package supports both class predictions and probability outputs, making it suitable for PCA-based k-NN with advanced metrics like AUC.
@@ -905,7 +935,6 @@ cat("Balanced Accuracy:", round(balanced_accuracy_knn_pca, 3), "\n")
 cat("F1 Score:", round(f1_score_knn_pca, 3), "\n")
 cat("AUC:", round(auc_value_knn_pca, 3), "\n")
 ```
-
 
 ### SVM with QDA 
 
@@ -947,7 +976,6 @@ plot(roc_curve_svm_pca, col = "red", main = "ROC Curve for SVM with PCA")
 auc_value_svm_pca <- auc(roc_curve_svm_pca)
 ```
 
-
 ```{r}
 cat("SVM with PCA Classifier Summary:\n")
 cat("Accuracy:", round(accuracy_svm_pca, 3), "\n")
@@ -955,7 +983,6 @@ cat("Balanced Accuracy:", round(balanced_accuracy_svm_pca, 3), "\n")
 cat("F1 Score:", round(f1_score_svm_pca, 3), "\n")
 cat("AUC:", round(auc_value_svm_pca, 3), "\n")
 ```
-
 
 ### GBDT with PCA 
 
@@ -1013,6 +1040,7 @@ cat("AUC:", round(gbdt_pca_auc_value, 3), "\n")
 ```
 
 ### ROC curves (PCA)
+This plots all the ROC Curves for the above 6 classifiers using on one plot for comparision. 
 ```{r}
 # Plot the first ROC curve (Logistic with PCA)
 plot(roc_curve_logistic_pca, col = "blue", lwd = 2, main = "Combined ROC Curves (PCA)")
@@ -1035,12 +1063,11 @@ legend("bottomright",
 ```
 
 
-
-# T1.3 Optimizing Classification Performance through Advanced Techniques
+## T1.3 Training and evaluation of classifiers
 
 Below, we train and evaluate three classifiers with the objective of improving the F1 score.
 
-## 1. Logistic Regression with L2 Regularization (Ridge Regression)
+### 1. Logistic Regression with L2 Regularization (Ridge Regression)
 
 L2 regularization, also known as Ridge Regression, is a technique used to prevent overfitting in machine learning models. It works by adding a penalty term to the model's loss function:
 
@@ -1082,9 +1109,11 @@ logistic_l2_predictions <- predict(final_l2_model, newx = test_X_log, s = best_l
 logistic_l2_predicted_labels <- ifelse(logistic_l2_predictions > 0.5, 1, 0)
 ```
 
+
 ```{r}
 # Confusion matrix
 logistic_l2_conf_matrix <- confusionMatrix(as.factor(logistic_l2_predicted_labels), as.factor(test_Y_log))
+print(logistic_l2_conf_matrix)
 
 # Extract metrics
 accuracy_logistic_l2 <- logistic_l2_conf_matrix$overall['Accuracy']
@@ -1096,8 +1125,6 @@ f1_score_logistic_l2 <- logistic_l2_conf_matrix$byClass['F1']
 # Calculate and plot the ROC curve
 roc_curve_logistic_l2 <- roc(test_Y_log, as.numeric(logistic_l2_predictions))  # Use probabilities for ROC
 plot(roc_curve_logistic_l2, main = "ROC Curve for Logistic Regression with L2", col='red')
-
-# Calculate AUC
 auc_logistic_l2 <- auc(roc_curve_logistic_l2)
 ```
 
@@ -1109,10 +1136,10 @@ cat("F1 Score:", round(f1_score_logistic_l2, 3), "\n")
 cat("AUC:", round(auc_logistic_l2, 3), "\n")
 ```
 
-The F1 score of 0.947 achieved with Logistic Regression using L2 Regularization demonstrates a significant improvement from the initial F1 score of 0.711, highlighting the effectiveness of regularization in enhancing model performance. This improvement reflects the model's strong ability to balance false positives and false negatives. Although slightly lower than advanced approaches like Elastic Net or the meta-classifier, this result still showcases a highly effective classification model. The substantial gain in F1 score underscores the value of L2 regularization in creating a robust and reliable classifier.
+The F1 score of 0.947 achieved with Logistic Regression using L2 Regularization indicates that the model performs exceptionally well in classifying the data, with a strong balance between false positives and false negatives. While slightly lower than other approaches such as Elastic Net or the meta-classifier, this result still reflects a highly effective model with minimal compromise on precision or recall. This performance makes L2-regularized logistic regression a competitive choice for robust classification.
 
 
-## 2. Elastic Net Regularization (Combination of L1 and L2)
+### 2. Elastic Net Regularization (Combination of L1 and L2)
 
 Elastic Net Regularization combines the strengths of L1 (Lasso) and L2 (Ridge) penalties to balance feature selection and model stability. It adds a penalty to the loss function that promotes sparsity (via L1) while preventing overfitting (via L2), making it effective in handling correlated predictors and high-dimensional datasets. Elastic Net is particularly useful when selecting groups of related features while maintaining robust generalization.
 
@@ -1139,14 +1166,22 @@ final_elastic_net_model <- glmnet(train_X, train_Y, alpha = 0.5, lambda = best_l
 elastic_net_predictions <- predict(final_elastic_net_model, newx = test_X, s = best_lambda, type = "response")
 elastic_net_predicted_labels <- ifelse(elastic_net_predictions > 0.5, 1, 0)
 
-# Evaluate Confusion Matrix
+# Evaluate
 conf_matrix_regularization <- confusionMatrix(as.factor(elastic_net_predicted_labels), as.factor(test_Y))
-
-# Extract metrics
-accuracy_elastic_net <- conf_matrix_regularization$overall["Accuracy"]
-balanced_accuracy_elastic_net <- conf_matrix_regularization$byClass["Balanced Accuracy"]
-f1_score_elastic_net <- conf_matrix_regularization$byClass["F1"]
+en_f1 <- conf_matrix_regularization$byClass['F1']
+en_accuracy <- conf_matrix_regularization$overall['Accuracy']
+en_balanced_accuracy <- conf_matrix_regularization$byClass['Balanced Accuracy']
 ```
+
+
+```{r}
+cat("Elastic Net Regularization Evaluation Summary:\n")
+cat("Accuracy:", round(en_accuracy, 3), "\n")
+cat("Balanced Accuracy:", round(en_balanced_accuracy, 3), "\n")
+cat("F1 Score:", round(en_f1, 3), "\n")
+```
+
+The F1 score of 0.966 achieved with Elastic Net Regularization demonstrates excellent model performance, balancing precision and recall effectively. This high F1 score indicates the model's robustness in minimizing both false positives and false negatives. By combining L1 (feature selection) and L2 (stabilization) penalties, Elastic Net has likely improved the model's ability to generalize to unseen data while selecting the most relevant features. This makes it particularly effective in handling any multicollinearity or irrelevant predictors present in the dataset. Overall, the result highlights the strength of Elastic Net in creating a well-regularized, high-performing model.
 
 ```{r}
 # Calculate the ROC curve
@@ -1161,18 +1196,7 @@ cat("AUC (Elastic Net Regularization):", round(auc_elastic_net, 3), "\n")
 
 ```
 
-```{r}
-cat("Elastic Net Regularization Evaluation Summary:\n")
-cat("Accuracy:", round(accuracy_elastic_net, 3), "\n")
-cat("Balanced Accuracy:", round(balanced_accuracy_elastic_net, 3), "\n")
-cat("F1 Score:", round(f1_score_elastic_net, 3), "\n")
-cat("AUC:", round(auc_elastic_net, 3), "\n")
-```
-
-The F1 score of 0.966 achieved with Elastic Net Regularization demonstrates excellent model performance, balancing precision and recall effectively. This high F1 score indicates the model's robustness in minimizing both false positives and false negatives. By combining L1 (feature selection) and L2 (stabilization) penalties, Elastic Net has likely improved the model's ability to generalize to unseen data while selecting the most relevant features. This makes it particularly effective in handling any multicollinearity or irrelevant predictors present in the dataset. Overall, the result highlights the strength of Elastic Net in creating a well-regularized, high-performing model.
-
-
-## 3. Meta Classifier
+### 3. Meta Classifier
 
 The meta-classifier combines the strengths of multiple base classifiers (LDA, Random Forest, and GBDT) to achieve better performance. By learning how to aggregate predictions, it can handle situations where individual classifiers might struggle, leading to improved metrics such as the F1 score. The evaluation demonstrates the effectiveness of this ensemble learning approach in combining diverse classifiers.
 
@@ -1186,9 +1210,9 @@ gbdt_pred <- ifelse(gbdt_predictions > 0.5, 1, 0)
 meta_features <- data.frame(lda = as.numeric(lda_pred), 
                             rf = as.numeric(rf_pred), 
                             gbdt = gbdt_pred, 
-                            label = as.numeric(as.factor(test_data1$label)) - 1)  # Convert labels to numeric (e.g., 0 and 1)
+                            label = as.numeric(as.factor(test_data1$label)) - 1)  
 
-# Train a meta-classifier (e.g., Logistic Regression)
+# Train a meta-classifier 
 meta_model <- glm(label ~ ., data = meta_features, family = binomial)
 
 # Predict probabilities on the meta features
@@ -1206,12 +1230,22 @@ meta_features$label <- factor(meta_features$label, levels = c(0, 1))
 ```{r}
 # Compute confusion matrix
 conf_matrix_meta <- confusionMatrix(meta_predicted_labels, meta_features$label)
+print(conf_matrix_meta)
 
 # Extract metrics
 accuracy_meta <- conf_matrix_meta$overall['Accuracy']
 balanced_accuracy_meta <- conf_matrix_meta$byClass['Balanced Accuracy']
 f1_score_meta <- conf_matrix_meta$byClass['F1']
+
+# Print the metrics
+cat("Accuracy (Meta-Classifier):", round(accuracy_meta, 3), "\n")
+cat("Balanced Accuracy (Meta-Classifier):", round(balanced_accuracy_meta, 3), "\n")
+cat("F1 Score (Meta-Classifier):", round(f1_score_meta, 3), "\n")
+
 ```
+
+The results demonstrate that the meta-classifier effectively combines the predictions of the base classifiers (LDA, Random Forest, and GBDT) to achieve outstanding performance. The high F1 score (96.4%) shows that the meta-classifier excels in balancing precision and recall, making it highly suitable for applications where both false positives and false negatives are critical. This performance improvement justifies the use of ensemble learning in this context.
+
 
 ```{r}
 # Calculate the ROC curve
@@ -1222,14 +1256,30 @@ plot(roc_curve_meta, main = "ROC Curve for Meta-Classifier", col = "darkgreen", 
 
 # Calculate the AUC
 auc_meta <- auc(roc_curve_meta)
+cat("AUC (Meta-Classifier):", round(auc_meta, 3), "\n")
 ```
 
+## T1.4 Predictor Function 
+
+The best approach was the Elastic Net Regularization in T1.3, which achieved an F1 score of 0.966. This function mypredict takes no agruments. It reads in a compressed csv file named test.csv.gz from the working directory. It then prepares the data, and uses our best model - final_elastic_net_model to make predictions. The probability predictions are then turned into class labels with 1 representing TREG and 0 representing CD4+T. The function predicts the class label of each row and return your prediction labels saved in a plain text file.
 ```{r}
-cat("Meta-Classifier Evaluation Summary:\n")
-cat("Accuracy:", round(accuracy_meta, 3), "\n")
-cat("Balanced Accuracy:", round(balanced_accuracy_meta, 3), "\n")
-cat("F1 Score:", round(f1_score_meta, 3), "\n")
-cat("AUC:", round(auc_meta, 3), "\n")
+mypredict <- function() {
+
+  # Read the csv given
+  test_data <-read.csv("test.csv.gz", header=TRUE)
+  
+  # Prepare the data
+  test_X <- as.matrix(test_data[, -1])
+  
+  # Make predictions using our best model - Elastic Net
+  elastic_net_predictions <- predict(final_elastic_net_model, newx = test_X, s = best_lambda, type = "response")
+  
+  # Convert the probabilities to class levels, TREG = 1 & CD4+T = 0
+  elastic_net_predicted_labels <- ifelse(elastic_net_predictions > 0.5, 1, 0)
+  
+  # Save the predictions as a plain text file
+  write(elastic_net_predicted_labels, file = "elastic_net_predictions.txt", ncolumns = 1)
+  
+}
 ```
 
-The results demonstrate that the meta-classifier effectively combines the predictions of the base classifiers (LDA, Random Forest, and GBDT) to achieve outstanding performance. The high F1 score (96.4%) shows that the meta-classifier excels in balancing precision and recall, making it highly suitable for applications where both false positives and false negatives are critical. This performance improvement justifies the use of ensemble learning in this context.
