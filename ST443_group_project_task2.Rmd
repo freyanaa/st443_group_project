@@ -44,6 +44,8 @@ any(is.na(MLData_Task2))
 
 ## Illustration of data with tsne
 
+tSNE (t-distributed Stochastic Neighbor Embedding) is a non-linear dimensionality reduction technique that transforms high-dimensional datasets of points to a low-dimensional representation while preserving as much of the significant structure of the high-dimensional data as possible. We will use this technique to visualize and understand patterns in the data.
+
 ```{r}
 # Create separate feature matrix and vector with label values
 labels <- MLData_Task2$label
@@ -52,6 +54,9 @@ data_matrix <- MLData_Task2[, -1]
 # Identifying and remove zero-variance columns
 non_constant_cols <- apply(data_matrix, 2, var) > 0
 data_matrix_clean <- as.matrix(data_matrix[, non_constant_cols])
+
+# Set seed to deal wit randomness of tSNE and ensure consistent results
+set.seed(123)
 
 # Perform t-SNE on the dataset
 tsne_results <- Rtsne(as.matrix(data_matrix_clean), dims = 2, perplexity = 30, verbose = FALSE)
@@ -100,7 +105,34 @@ As we can see, we are clearly dealing with high-dimensional data, meaning that p
 sum(MLData_Task2 == 0) / (nrow(MLData_Task2) * ncol(MLData_Task2))
 ```
 
-The dataset is extremly sparse, i.e. it contains a significant number of zero values relative to its size.
+```{r}
+# Subset dataset to  800 rows and 2000 columns for visualisation purposes
+subset_data <- data_matrix[1:800, 2:2001]
+
+# Convert to a dataframe
+subset_df <- as.data.frame(as.table(as.matrix(subset_data)))
+colnames(subset_df) <- c("Row", "Column", "Value")
+
+# Plot the sparse matrix
+ggplot(subset_df, aes(x = Column, y = Row, fill = as.factor(Value))) +
+  geom_raster() +
+  scale_fill_manual(values = c("white", "black")) +  # Set binary colors
+  theme_minimal() +
+  labs(
+    title = "Sparse Matrix Visualization",
+    x = "Columns",
+    y = "Rows",
+    fill = "Value"
+  )+
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()
+  )
+```
+
+The calculation and the plot shows that our dataset is extremly sparse, i.e. it contains a significant number of zero values relative to its size.
 
 ```{r}
 # Check if the dataset is balanced, i.e. if the frequency of each class is approx. the same
@@ -152,7 +184,7 @@ The histogram visualises that there is a large amount of features with a varianc
 
 For all our models, we will be using an 80/20 Train to Test data split. We will run a cross-validation on the train set to select the best parameter values for our models. Then we will fit our model with the selected parameter values on the test data to see how well it performs on unseen data. The metric of evaluation in all cases is the balanced accuracy. Since balanced accuracy is not available as a pre-defined metric in the R methods we are using, we have implemented a custom function to calculate it.
 
-## Lasso with Linear Regression + Classification
+## Generalized Linear Model with LASSO
 
 We chose Lasso with linear regression and subsequent conversion at a threshold for classification as our first model. As it's a regularization method that adds a penalty to the model's coefficients and shrinking less important ones to zero, it effectively performs feature selection.
 
@@ -284,33 +316,31 @@ non_zero_count <- sum(coefficients != 0) - 1
 cat("Number of non-zero coefficients:", non_zero_count, "\n")
 ```
 
-The best value for lambda according to our cross-validation is \~ 0.059, so this is the value we will use to evaluate our model on the test data. Also, we can see that the number of features selected in our best model is 42. In the following plot we can see how the balanced accuracy differs with respect to the different values that we tested for lambda.
+The best value for lambda according to our cross-validation is \~ 0.059, so this is the value we will use to evaluate our model on the test data. Also, we can see that the number of features selected in our best model is 42. In the following plot we can see how the balanced accuracy differs with respect to the number of features that was chosen.
 
 ```{r}
-# Plot balanced accuracy for training set over range for regularization parameter
-plot(lasso_model)
-```
+# Extract results from the trained model
+results <- lasso_model$results
 
-The following creates a plot to visualize how the number of selected features depends on the value of lambda chosen for the model.
+# Extract balanced accuracy and lambda values
+balanced_accuracies <- results$BalancedAccuracy
+lambda_values <- results$lambda
 
-```{r}
-# Extract all lambda values from the model
-lambda_values <- lasso_model$finalModel$lambda
+# Calculate the number of selected features for each lambda
+num_features <- sapply(lambda_values, function(lambda) {
+  coefficients <- coef(lasso_model$finalModel, s = lambda)
+  sum(coefficients != 0) - 1
+})
 
-# Initialize a vector to store the number of non-zero coefficients per model/lambda
-num_features <- numeric(length(lambda_values))
-
-# Loop through each lambda and count non-zero coefficients
-for (i in seq_along(lambda_values)) {
-  coefficients <- coef(lasso_model$finalModel, s = lambda_values[i])
-  num_features[i] <- sum(coefficients != 0) - 1
-}
-
-# Plot the results
+# Plot Balanced Accuracy vs. Number of Selected Features
 plot(
-  log10(lambda_values), num_features, type = "b",
-  xlab = "Log10(Lambda)", ylab = "Number of Selected Features",
-  main = "Number of Selected Features vs. Lambda"
+  num_features, balanced_accuracies, type = "b",
+  xlab = "Number of Selected Features", ylab = "Balanced Accuracy",
+  main = "Balanced Accuracy vs. Number of Selected Features",
+  pch = 16,
+  cex = 0.5,
+  col = "blue",
+  lwd = 1.5
 )
 ```
 
@@ -388,7 +418,7 @@ sqrt(31,269) still leaves \~173 features to be considered at each split. We will
 ```{r}
 # Define the hyperparameter grid for tuning
 tune_grid <- expand.grid(
-  mtry = c(20, 50, 100)
+  mtry = c(50, 100, 173)
 )
 ```
 
@@ -756,10 +786,7 @@ train_Y <- factor(train_data$label, levels = c(-1, 1), labels = c(0, 1))
 test_Y <- factor(test_data$label, levels = c(-1, 1), labels = c(0, 1))    
 ```
 
--   train_X and test_X hold feature matrices for training and testing, respectively.
--   train_Y and test_Y store the labels (converted from -1, 1 to 0, 1 for binary classification).
-
-### Feature pre-selection - Variance threshold:
+As we encounter stackoverflow issues when fitting the model on a larger set of features, we perform a pre-selection of features over the variance threshold of 0.05. A reason for the error could be, that with a higher number of features, issues such as multicollinearity and insufficient penalization can arise, causing numerical instability in Elastic Net.
 
 ```{r}
 feature_variances <- apply(train_X, 2, var)
@@ -770,14 +797,7 @@ test_X <- test_X[, selected_features]
 cat("Number of features after variance filtering:", ncol(train_X), "\n")
 ```
 
--   Filters out features with low variance (\< 0.05), as they contribute little predictive power.
--   The threshold 0.05 reduces dimensions to \~1,194 features, balancing computational feasibility and information retention.
-
-### Comment on Threshold:
-
--   Higher Threshold (0.05): Results in fewer features (\~1k), improving speed and reducing redundancy.
--   Lower Thresholds (0.01, 0.02): Retain more features (up to \~30k), but these cause issues with the Elastic Net method in this implementation (e.g., resulting in NaN balanced accuracy).
--   When thresholds are too low, issues such as multicollinearity and insufficient penalization can arise, causing numerical instability in Elastic Net.
+The threshold 0.05 reduces dimensions to \~1,194 features, balancing computational feasibility and information retention.
 
 ```{r}
 # Scale data
@@ -788,12 +808,9 @@ test_X <- scale(test_X)
 Standardizes features to have zero mean and unit variance, critical for regularization-based methods like Elastic Net, which are sensitive to feature scales.
 
 ```{r}
-# Calculate class weights
+# Calculate class weights to account for imbalance in dataset
 class_weights <- ifelse(train2_data$label == 1, nrow(train2_data)/ (2*sum(train2_data$label==1)), nrow(train2_data)/ (2*sum(train2_data$label==-1)))
 ```
-
--   Accounts for class imbalance by assigning higher weights to the minority class (class 1).
--   Ensures the model does not favor the majority class disproportionately.
 
 ```{r}
 # Define custom balanced accuracy function
@@ -815,9 +832,6 @@ calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
 }
 ```
 
--   Calculates the balanced accuracy metric, which is the average of sensitivity (recall for the positive class) and specificity (recall for the negative class).
--   This metric is crucial for imbalanced datasets, providing a fair assessment of model performance across both classes.
-
 ```{r}
 # Set up traincontrol environment
 train_control <- trainControl(
@@ -829,8 +843,7 @@ train_control <- trainControl(
 )
 ```
 
--   Specifies 5-fold cross-validation for training.
--   Uses the custom calculate_balanced_accuracy function to evaluate model performance during cross-validation.
+We use a 5-fold cross-validation for training.
 
 ```{r}
 # Specify hyperparameter grid
@@ -841,8 +854,6 @@ elastic_net_grid <- expand.grid(
 ```
 
 Defines a grid of hyperparameters for Elastic Net: - alpha: Controls the balance between L1 (sparse selection) and L2 (shrinkage) penalties. - lambda: Regularization strength.
-
-### Train Elastic Net Model
 
 ```{r}
 # Enable parallel processing
@@ -868,8 +879,7 @@ stopCluster(cl)
 print(elastic_net_model$bestTune)
 ```
 
--   Trains the Elastic Net model using the defined hyperparameter grid and class weights.
--   Parallel processing reduces computational time.
+We train the Elastic Net model using the defined hyperparameter grid and class weights while applying parallel processing to reduce computational time.
 
 ```{r}
 # Extract best parameters 
@@ -883,8 +893,6 @@ non_zero_count <- sum(coefficients != 0) - 1
 cat("Number of non-zero coefficients:", non_zero_count, "\n")
 ```
 
-### Evaluate Model on Test Set
-
 ```{r}
 set.seed(123)
 # Make predictions on test dataset
@@ -895,22 +903,6 @@ conf_matrix <- confusionMatrix(elastic_predictions, test_Y)
 
 # Print confusion matrix and metrics
 print(conf_matrix)
-```
-
-### Balanced Accuracy Calculation
-
-```{r}
-# Calculate balanced accuracy
-TP <- conf_matrix$table[1, 1]
-FP <- conf_matrix$table[1, 2]
-TN <- conf_matrix$table[2, 2]
-FN <- conf_matrix$table[2, 1]
-
-sensitivity <- TP / (TP + FN)
-specificity <- TN / (TN + FP)
-balanced_accuracy <- (sensitivity + specificity) / 2
-
-cat("Balanced Accuracy on Test Data:", balanced_accuracy, "\n")
 ```
 
 The model achieves a balanced accuracy of 0.71 on the test set, indicating good overall performance on this imbalanced dataset. The sensitivity (97.89%) is high, showing the model is effective at identifying the majority class. However, specificity (44.44%) is lower, reflecting challenges in correctly classifying the minority class.
@@ -1027,7 +1019,7 @@ SVM with RFE Balanced Accuracy: 0.711658841940532
 
 # Gradient Boosting
 
-Gradient Boosting is a technique that builds models sequentially by combining multiple weak learners, typically decision trees, to create a strong predictive model. Each tree corrects the errors of the previous one by focusing on minimizing a specific loss function (e.g., Mean Squared Error or Log Loss) using gradient descent. This process improves predictions by fitting new models to the residuals of the previous models, making it highly effective for regression and classification tasks.
+Gradient Boosting is a technique that builds models sequentially by combining multiple weak learners, in this case decision trees, to create a strong predictive model. Each tree corrects the errors of the previous one by focusing on minimizing a specific loss function using gradient descent. GB improves predictions by fitting new models to the residuals of the previous models, making it a worthy candidate for our classification task.
 
 ```{r}
 # Set seed for reproducibility
@@ -1043,10 +1035,7 @@ GBtrain_data$label <- factor(GBtrain_data$label, levels = c(-1, 1), labels = c("
 GBtest_data$label <- factor(GBtest_data$label, levels = c(-1, 1), labels = c("Class1", "Class2"))
 ```
 
-### Feature pre-selection - Variance threshold:
-
--   Filters out features with low variance (\< 0.05), as they contribute little predictive power.
--   The threshold 0.05 reduces dimensions to \~1,194 features, balancing computational feasibility and information retention.
+We apply a pre-selection of features by dropping those with a variance \< 0.05 as we otherwise encounter a stackoverflow problem.
 
 ```{r}
 # Calculating variance of numeric features
@@ -1069,7 +1058,7 @@ GB_train_Y <- GBtrain_data$label
 GB_test_Y <- GBtest_data$label
 ```
 
-Now we specify the balanced accuracy metric, which is the average of sensitivity (recall for the positive class) and specificity (recall for the negative class). This metric is crucial for imbalanced datasets, providing a fair assessment of the model performance across both classes.
+We specify the function to calculate the balanced accuracy.
 
 ```{r}
 # Set up balanced accuracy function
@@ -1093,6 +1082,8 @@ calculate_balanced_accuracy <- function(data, lev = NULL, model = NULL) {
 }
 ```
 
+We set our traincontrol function up for a 5-fold CV.
+
 ```{r}
 # Step 3: Cross-Validation and Tuning
 GBtrain_control <- trainControl(
@@ -1103,12 +1094,10 @@ GBtrain_control <- trainControl(
 )
 ```
 
--   Specifies 5-fold cross-validation for training.
--   Uses the custom (custom_summary) function to evaluate model performance during cross-validation.
-
 We now define a grid of hyperparameter combinations for tuning the Model. It specifies various values for key parameters: learning rate, number of trees, maximum tree depth minimum observations required in a terminal node. We are aiming for a comprehensive set of parameter combinations to optimize the model's performance during training.
 
 ```{r}
+# Define hyperparametergrid for tuning
 GBtune_grid <- expand.grid(
  shrinkage = c(0.001, 0.01, 0.03, 0.05, 0.1, 0.2),  
   n.trees = c(20, 50),     
@@ -1118,23 +1107,21 @@ GBtune_grid <- expand.grid(
 ```
 
 ```{r}
+# Assign class weights to account for the imbalance of the dataset
 class_weights <- ifelse(GB_train_Y == "Class2", 
                         1 / sum(GB_train_Y == "Class2"), 
                         1 / sum(GB_train_Y == "Class1"))
 ```
 
-### Training the Gradient Booosting Model
-
 ```{r}
+# Create dataframe for training the GB model
 GB_train <- data.frame(GB_train_X, label = GB_train_Y)
-```
 
-```{r}
 # Set seed for reproducibility
 set.seed(123)
 
 # Train the GBM model
-gbm_tuned_model <- train(
+gbm_model <- train(
   label ~ .,
   data = GB_train,
   method = "gbm",
@@ -1147,19 +1134,15 @@ gbm_tuned_model <- train(
 
 # Printing the best model parameters
 cat("Best Model Parameters:\n")
-print(gbm_tuned_model$bestTune)
+print(gbm_model$bestTune)
 ```
 
--   Training the model on the filtered data with weights to handle class imbalance
-
--   It optimizes the model using a grid of hyperparameters and evaluates performance based on balanced accuracy, then outputs the best hyperparameter combination.
+Our CV selects the model with the following hyperparamters as our best model: n.trees = 20, interaction.depth = 3, shrinkage = 0.1 and n.miniobsinnode = 15.
 
 ```{r}
 # Save best model
-gbm_final_model <- gbm_tuned_model$finalModel
+gbm_final_model <- gbm_model$finalModel
 ```
-
-### Retrieve \# of selected features
 
 ```{r}
 # Extract feature importance
@@ -1176,9 +1159,7 @@ selected_features <- GBfeature_importance %>%
 cat("Number of features selected based on importance threshold:", length(selected_features), "\n")
 ```
 
-Our model selected 36 features.
-
-### Evaluating on the test data
+Our final model selected 36 features.
 
 ```{r}
 # Predict class labels
