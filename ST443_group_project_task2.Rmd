@@ -107,7 +107,7 @@ sum(MLData_Task2 == 0) / (nrow(MLData_Task2) * ncol(MLData_Task2))
 
 ```{r}
 # Subset dataset to  800 rows and 2000 columns for visualisation purposes
-subset_data <- data_matrix[1:800, 2:2001]
+subset_data <- MLData_Task2[1:800, 2:2001]
 
 # Convert to dataframe
 subset_df <- as.data.frame(as.table(as.matrix(subset_data)))
@@ -341,7 +341,7 @@ plot(
   pch = 16,
   cex = 0.5,
   col = "blue",
-  lwd = 1.5
+  lwd = 1.0
 )
 ```
 
