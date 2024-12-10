@@ -1063,11 +1063,11 @@ legend("bottomright",
 ```
 
 
-## T1.3 Training and evaluation of classifiers
+# T1.3 Optimizing Classification Performance through Advanced Techniques
 
 Below, we train and evaluate three classifiers with the objective of improving the F1 score.
 
-### 1. Logistic Regression with L2 Regularization (Ridge Regression)
+## 1. Logistic Regression with L2 Regularization (Ridge Regression)
 
 L2 regularization, also known as Ridge Regression, is a technique used to prevent overfitting in machine learning models. It works by adding a penalty term to the model's loss function:
 
@@ -1085,6 +1085,7 @@ train_X_log <- as.matrix(train_data_log[, -1])
 test_X_log <- as.matrix(test_data_log[, -1])   
 train_Y_log <- train_data_log$label
 test_Y_log <- test_data_log$label
+
 ```
 
 
@@ -1098,6 +1099,7 @@ best_lambda <- cv_model$lambda.min
 
 # Train the final model using the best lambda
 final_l2_model <- glmnet(train_X_log, train_Y_log, family = "binomial", alpha = 0, lambda = best_lambda)
+
 ```
 
 
@@ -1113,7 +1115,6 @@ logistic_l2_predicted_labels <- ifelse(logistic_l2_predictions > 0.5, 1, 0)
 ```{r}
 # Confusion matrix
 logistic_l2_conf_matrix <- confusionMatrix(as.factor(logistic_l2_predicted_labels), as.factor(test_Y_log))
-print(logistic_l2_conf_matrix)
 
 # Extract metrics
 accuracy_logistic_l2 <- logistic_l2_conf_matrix$overall['Accuracy']
@@ -1121,10 +1122,13 @@ balanced_accuracy_logistic_l2 <- logistic_l2_conf_matrix$byClass['Balanced Accur
 f1_score_logistic_l2 <- logistic_l2_conf_matrix$byClass['F1']
 ```
 
+
 ```{r}
 # Calculate and plot the ROC curve
 roc_curve_logistic_l2 <- roc(test_Y_log, as.numeric(logistic_l2_predictions))  # Use probabilities for ROC
 plot(roc_curve_logistic_l2, main = "ROC Curve for Logistic Regression with L2", col='red')
+
+# Calculate AUC
 auc_logistic_l2 <- auc(roc_curve_logistic_l2)
 ```
 
@@ -1135,15 +1139,16 @@ cat("Balanced Accuracy:", round(balanced_accuracy_logistic_l2, 3), "\n")
 cat("F1 Score:", round(f1_score_logistic_l2, 3), "\n")
 cat("AUC:", round(auc_logistic_l2, 3), "\n")
 ```
+The F1 score of 0.947 achieved with Logistic Regression using L2 Regularization demonstrates a significant improvement from the initial F1 score of 0.711, highlighting the effectiveness of regularization in enhancing model performance. This improvement reflects the model's strong ability to balance false positives and false negatives. Although slightly lower than advanced approaches like Elastic Net or the meta-classifier, this result still showcases a highly effective classification model. The substantial gain in F1 score underscores the value of L2 regularization in creating a robust and reliable classifier.
 
-The F1 score of 0.947 achieved with Logistic Regression using L2 Regularization indicates that the model performs exceptionally well in classifying the data, with a strong balance between false positives and false negatives. While slightly lower than other approaches such as Elastic Net or the meta-classifier, this result still reflects a highly effective model with minimal compromise on precision or recall. This performance makes L2-regularized logistic regression a competitive choice for robust classification.
 
-
-### 2. Elastic Net Regularization (Combination of L1 and L2)
+## 2. Elastic Net Regularization (Combination of L1 and L2)
 
 Elastic Net Regularization combines the strengths of L1 (Lasso) and L2 (Ridge) penalties to balance feature selection and model stability. It adds a penalty to the loss function that promotes sparsity (via L1) while preventing overfitting (via L2), making it effective in handling correlated predictors and high-dimensional datasets. Elastic Net is particularly useful when selecting groups of related features while maintaining robust generalization.
 
 ```{r}
+library(glmnet)
+
 # Prepare data for glmnet
 train_X <- as.matrix(train_data1[, -1])
 test_X <- as.matrix(test_data1[, -1])
@@ -1166,22 +1171,15 @@ final_elastic_net_model <- glmnet(train_X, train_Y, alpha = 0.5, lambda = best_l
 elastic_net_predictions <- predict(final_elastic_net_model, newx = test_X, s = best_lambda, type = "response")
 elastic_net_predicted_labels <- ifelse(elastic_net_predictions > 0.5, 1, 0)
 
-# Evaluate
+# Evaluate Confusion Matrix
 conf_matrix_regularization <- confusionMatrix(as.factor(elastic_net_predicted_labels), as.factor(test_Y))
-en_f1 <- conf_matrix_regularization$byClass['F1']
-en_accuracy <- conf_matrix_regularization$overall['Accuracy']
-en_balanced_accuracy <- conf_matrix_regularization$byClass['Balanced Accuracy']
+
+# Extract metrics
+accuracy_elastic_net <- conf_matrix_regularization$overall["Accuracy"]
+balanced_accuracy_elastic_net <- conf_matrix_regularization$byClass["Balanced Accuracy"]
+f1_score_elastic_net <- conf_matrix_regularization$byClass["F1"]
 ```
 
-
-```{r}
-cat("Elastic Net Regularization Evaluation Summary:\n")
-cat("Accuracy:", round(en_accuracy, 3), "\n")
-cat("Balanced Accuracy:", round(en_balanced_accuracy, 3), "\n")
-cat("F1 Score:", round(en_f1, 3), "\n")
-```
-
-The F1 score of 0.966 achieved with Elastic Net Regularization demonstrates excellent model performance, balancing precision and recall effectively. This high F1 score indicates the model's robustness in minimizing both false positives and false negatives. By combining L1 (feature selection) and L2 (stabilization) penalties, Elastic Net has likely improved the model's ability to generalize to unseen data while selecting the most relevant features. This makes it particularly effective in handling any multicollinearity or irrelevant predictors present in the dataset. Overall, the result highlights the strength of Elastic Net in creating a well-regularized, high-performing model.
 
 ```{r}
 # Calculate the ROC curve
@@ -1195,6 +1193,16 @@ auc_elastic_net <- auc(roc_curve_elastic_net)
 cat("AUC (Elastic Net Regularization):", round(auc_elastic_net, 3), "\n")
 
 ```
+
+```{r}
+cat("Elastic Net Regularization Evaluation Summary:\n")
+cat("Accuracy:", round(accuracy_elastic_net, 3), "\n")
+cat("Balanced Accuracy:", round(balanced_accuracy_elastic_net, 3), "\n")
+cat("F1 Score:", round(f1_score_elastic_net, 3), "\n")
+cat("AUC:", round(auc_elastic_net, 3), "\n")
+```
+
+The F1 score of 0.966 achieved with Elastic Net Regularization demonstrates excellent model performance, balancing precision and recall effectively. This high F1 score indicates the model's robustness in minimizing both false positives and false negatives. By combining L1 (feature selection) and L2 (stabilization) penalties, Elastic Net has likely improved the model's ability to generalize to unseen data while selecting the most relevant features. This makes it particularly effective in handling any multicollinearity or irrelevant predictors present in the dataset. Overall, the result highlights the strength of Elastic Net in creating a well-regularized, high-performing model.
 
 ## 3. Meta Classifier
 
