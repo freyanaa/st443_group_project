@@ -977,8 +977,6 @@ cat("Number of features retained:", length(SVMselected_features), "\n")
 # Apply on training and test dataset
 SVMtrain_X <- train_X[, SVMselected_features]
 SVMtest_X <- test_X[, SVMselected_features]
-
-
 ```
 
 Standardize the features by centering (subtracting the mean) and scaling (dividing by the standard deviation). Standardization is important for SVM because it ensures that all features are on the same scale, preventing features with larger magnitudes from dominating the SVM's decision boundary. Centering (subtracting the mean) ensures that each feature has a mean of zero, which helps improve the optimization process and convergence of the SVM algorithm.
@@ -1002,7 +1000,7 @@ svm_rfe <- rfe(SVMtrain_X, train_Y, sizes=c(10, 20, 30, 40, 50, 60, 70, 80, 90, 
 print(svm_rfe)
 ```
 
-Size 30 was selected because it has the highest accuracy at 0.9406
+Size 30 was selected because it has the highest accuracy at 0.9391.
 
 The svm_rfe object contains the result of the RFE process, including the set of features that resulted in the best model performance. Then, subset the training and test data to include only the selected features. This ensures that the model is trained and evaluated only on the most relevant features.
 
@@ -1019,14 +1017,26 @@ X_test_selected <- SVMtest_X[, selected_features]
 
 Printed out above are the 30 features that were selected.
 
-Train the SVM model using the selected features. The model is trained on the selected features (X_train_selected) and the corresponding target labels (train_Y). After training the model, the 'predict' function is used to generate predictions (y_pred) for the test set based on the features (X_test_selected) that were selected during feature selection.
-
+Defined a tuning grid to find the optimal value of C. Train the linear SVM model using the selected features from above.
 ```{r}
-# Train the SVM model using the selected features
-svm_model <- svm(X_train_selected, as.factor(train_Y), kernel = "linear")
+tune_grid <- expand.grid(C = c(0.01, 0.1, 1, 10, 100))
+tuned_svm <- train(
+  X_train_selected, 
+  as.factor(train_Y), 
+  method = "svmLinear",
+  tuneGrid = tune_grid,
+  trControl = trainControl(method = "cv", number = 10),
+  metric = "Accuracy"
+)
 
+print(tuned_svm)
+```
+The optimal cost is C = 1
+
+After training the model, the 'predict' function is used to generate predictions (y_pred) for the test set based on the features (X_test_selected) that were selected during feature selection.
+```{r}
 # Generate predictions on the test set using the trained SVM model
-y_pred <- predict(svm_model, X_test_selected)
+y_pred <- predict(tuned_svm, X_test_selected)
 
 # Ensure y_pred and test_Y are factors with the same levels
 y_pred <- factor(y_pred, levels = levels(test_Y)) 
@@ -1034,7 +1044,6 @@ test_Y <- factor(test_Y, levels = levels(y_pred))
 ```
 
 Generate the confusion matrix to evaluate the performance of the model and extract the Balanced Accuracy from the confusion matrix results.
-
 ```{r}
 # Evaluate the model using balanced accuracy
 conf_matrix <- confusionMatrix(y_pred, test_Y)
@@ -1043,7 +1052,7 @@ balanced_accuracy <- conf_matrix$byClass["Balanced Accuracy"]
 print(paste("SVM with RFE Balanced Accuracy: ", balanced_accuracy))
 ```
 
-SVM with RFE Balanced Accuracy: 0.711658841940532
+SVM with RFE Balanced Accuracy: 0.73943661971831
 
 ## Gradient Boosting
 
