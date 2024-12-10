@@ -1196,7 +1196,7 @@ cat("AUC (Elastic Net Regularization):", round(auc_elastic_net, 3), "\n")
 
 ```
 
-### 3. Meta Classifier
+## 3. Meta Classifier
 
 The meta-classifier combines the strengths of multiple base classifiers (LDA, Random Forest, and GBDT) to achieve better performance. By learning how to aggregate predictions, it can handle situations where individual classifiers might struggle, leading to improved metrics such as the F1 score. The evaluation demonstrates the effectiveness of this ensemble learning approach in combining diverse classifiers.
 
@@ -1210,9 +1210,9 @@ gbdt_pred <- ifelse(gbdt_predictions > 0.5, 1, 0)
 meta_features <- data.frame(lda = as.numeric(lda_pred), 
                             rf = as.numeric(rf_pred), 
                             gbdt = gbdt_pred, 
-                            label = as.numeric(as.factor(test_data1$label)) - 1)  
+                            label = as.numeric(as.factor(test_data1$label)) - 1)  # Convert labels to numeric (e.g., 0 and 1)
 
-# Train a meta-classifier 
+# Train a meta-classifier (e.g., Logistic Regression)
 meta_model <- glm(label ~ ., data = meta_features, family = binomial)
 
 # Predict probabilities on the meta features
@@ -1230,22 +1230,12 @@ meta_features$label <- factor(meta_features$label, levels = c(0, 1))
 ```{r}
 # Compute confusion matrix
 conf_matrix_meta <- confusionMatrix(meta_predicted_labels, meta_features$label)
-print(conf_matrix_meta)
 
 # Extract metrics
 accuracy_meta <- conf_matrix_meta$overall['Accuracy']
 balanced_accuracy_meta <- conf_matrix_meta$byClass['Balanced Accuracy']
 f1_score_meta <- conf_matrix_meta$byClass['F1']
-
-# Print the metrics
-cat("Accuracy (Meta-Classifier):", round(accuracy_meta, 3), "\n")
-cat("Balanced Accuracy (Meta-Classifier):", round(balanced_accuracy_meta, 3), "\n")
-cat("F1 Score (Meta-Classifier):", round(f1_score_meta, 3), "\n")
-
 ```
-
-The results demonstrate that the meta-classifier effectively combines the predictions of the base classifiers (LDA, Random Forest, and GBDT) to achieve outstanding performance. The high F1 score (96.4%) shows that the meta-classifier excels in balancing precision and recall, making it highly suitable for applications where both false positives and false negatives are critical. This performance improvement justifies the use of ensemble learning in this context.
-
 
 ```{r}
 # Calculate the ROC curve
@@ -1256,8 +1246,18 @@ plot(roc_curve_meta, main = "ROC Curve for Meta-Classifier", col = "darkgreen", 
 
 # Calculate the AUC
 auc_meta <- auc(roc_curve_meta)
-cat("AUC (Meta-Classifier):", round(auc_meta, 3), "\n")
+
 ```
+
+```{r}
+cat("Meta-Classifier Evaluation Summary:\n")
+cat("Accuracy:", round(accuracy_meta, 3), "\n")
+cat("Balanced Accuracy:", round(balanced_accuracy_meta, 3), "\n")
+cat("F1 Score:", round(f1_score_meta, 3), "\n")
+cat("AUC:", round(auc_meta, 3), "\n")
+```
+
+The results demonstrate that the meta-classifier effectively combines the predictions of the base classifiers (LDA, Random Forest, and GBDT) to achieve outstanding performance. The high F1 score (96.4%) shows that the meta-classifier excels in balancing precision and recall, making it highly suitable for applications where both false positives and false negatives are critical. This performance improvement justifies the use of ensemble learning in this context.
 
 ## T1.4 Predictor Function 
 
